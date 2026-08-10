@@ -26,7 +26,7 @@
       <header class="topbar">
         <div class="mobile-mark">TW</div>
         <div class="title"><h1>TAIWAN MLB TRACKER</h1><p>台灣球員每日表現追蹤</p></div>
-        <div class="top-meta"><div><b id="today-date">—</b><span>TODAY</span></div><div><b id="last-update">—</b><span>LAST UPDATE</span></div><strong><i></i> LIVE DATA</strong></div>
+        <div class="top-meta"><div class="date-meta"><b id="today-date">—</b><span>TODAY</span></div><div><b id="last-update">—</b><span>LAST UPDATE</span></div><strong id="live-status"><i></i> LIVE DATA</strong></div>
       </header>
 
       <section class="metrics" aria-label="今日摘要">
@@ -45,7 +45,7 @@
       <section class="lower-grid" id="statistics">
         <section class="panel table-panel">
           <div class="section-head"><div><h2>球季 / 近期表現</h2><p>SEASON & RECENT PERFORMANCE</p></div></div>
-          <div class="table-scroll"><table><thead><tr><th>PLAYER</th><th>LEVEL</th><th>TODAY</th><th>AVG / ERA</th><th>OPS / WHIP</th><th>HR / K</th><th>LAST 5</th></tr></thead><tbody id="stats-body"></tbody></table></div>
+          <div class="table-scroll"><table><caption class="sr-only">Tracked players’ season and recent performance</caption><thead><tr><th>PLAYER</th><th>LEVEL</th><th>TODAY</th><th>AVG / ERA</th><th>OPS / WHIP</th><th>HR / K</th><th>LAST 5</th></tr></thead><tbody id="stats-body"></tbody></table></div>
         </section>
         <aside class="panel insights-panel"><div class="section-head"><div><h2>今日洞察</h2><p>TODAY'S INSIGHTS</p></div></div><div id="insights"></div></aside>
       </section>
