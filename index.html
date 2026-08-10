@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taiwan MLB Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">TAIWAN BASEBALL · MLB</p>
+        <h1>Taiwan MLB Tracker 🇹🇼⚾</h1>
+        <p class="subtitle">台灣球員的每日賽況、球季數據與 MLB 動態，一個畫面快速掌握。</p>
+      </div>
+      <div class="live-pill"><span></span> Prototype v0.1</div>
+    </header>
+
+    <section class="summary-grid" aria-label="dashboard summary">
+      <article class="summary-card"><span>追蹤球員</span><strong id="player-count">3</strong></article>
+      <article class="summary-card"><span>今日出賽</span><strong>—</strong><small>下一版接 MLB API</small></article>
+      <article class="summary-card"><span>資料來源</span><strong>MLB</strong><small>Official API planned</small></article>
+    </section>
+
+    <section class="section-heading">
+      <div><p class="eyebrow">PLAYER WATCH</p><h2>台灣球員追蹤</h2></div>
+      <button id="refresh-btn" type="button">重新整理</button>
+    </section>
+
+    <section id="players" class="player-grid"></section>
+
+    <section class="roadmap">
+      <p class="eyebrow">BUILD ROADMAP</p>
+      <h2>接下來我們會讓它真的活起來</h2>
+      <div class="roadmap-items">
+        <div><b>01</b><span>Dashboard UI</span><em>NOW</em></div>
+        <div><b>02</b><span>MLB live data</span><em>NEXT</em></div>
+        <div><b>03</b><span>Public website</span><em>SOON</em></div>
+        <div><b>04</b><span>LINE daily alert</span><em>LATER</em></div>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
