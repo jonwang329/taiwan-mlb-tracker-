@@ -22,6 +22,22 @@ function gameLine(group,s={}){
   if(group==='pitching') return `${s.inningsPitched??'0'} IP · ${s.strikeOuts??0} K · ${s.earnedRuns??0} ER`;
   return `${s.hits??0}-for-${s.atBats??0} · ${s.rbi??0} RBI · ${s.homeRuns??0} HR`;
 }
+function dateKey(value){
+  if(!value) return '';
+  return String(value).slice(0,10);
+}
+function todayInTaiwan(){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const get=t=>parts.find(p=>p.type===t)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+function activityLabel(last){
+  if(!last) return '2026 尚無可用比賽紀錄';
+  const lastDate=dateKey(last.date);
+  const line=gameLine(last.group,last.stat||{});
+  if(lastDate===todayInTaiwan()) return `TODAY · ${line}`;
+  return `TODAY · DID NOT PLAY ｜ Latest ${lastDate} · ${line}`;
+}
 
 function card(player,stats=loadingStats(),latest='正在連接 MLB/MiLB 資料…'){
  return `<article class="player-card">
@@ -41,8 +57,8 @@ async function getPlayerData(player){
  const seasonStat=season.stats?.[0]?.splits?.[0]?.stat||{};
  const games=log.stats?.[0]?.splits||[];
  const last=games.length?games[games.length-1]:null;
- const latest=last ? `最近一場 ${last.date||''} · ${gameLine(player.group,last.stat||{})}` : '2026 尚無可用比賽紀錄';
- return {stats:statTriplet(player.group,seasonStat),latest};
+ if(last) last.group=player.group;
+ return {stats:statTriplet(player.group,seasonStat),latest:activityLabel(last)};
 }
 
 async function renderPlayers(){
