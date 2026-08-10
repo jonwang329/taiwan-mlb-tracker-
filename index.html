@@ -3,50 +3,64 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#071226" />
   <title>Taiwan MLB Tracker</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <main class="app-shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">TAIWAN BASEBALL · MLB / MiLB</p>
-        <h1>Taiwan MLB Tracker 🇹🇼⚾</h1>
-        <p class="subtitle">台灣球員的每日賽況、球季數據與旅美動態，一個畫面快速掌握。</p>
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Taiwan MLB Tracker 首頁">
+        <span class="brand-mark" aria-hidden="true">TW</span>
+        <span><b>Taiwan MLB</b><small>球員追蹤中心</small></span>
+      </a>
+      <div class="header-actions">
+        <span class="line-pill"><i aria-hidden="true"></i> LINE 通知已排程</span>
+        <span class="live-pill"><i aria-hidden="true"></i> LIVE DATA</span>
       </div>
-      <div class="live-pill"><span></span> Live Data</div>
     </header>
 
-    <section class="summary-grid" aria-label="dashboard summary">
-      <article class="summary-card"><span>追蹤球員</span><strong id="player-count">—</strong></article>
-      <article class="summary-card"><span>今日出賽</span><strong id="today-count">—</strong><small id="today-date">正在更新</small></article>
-      <article class="summary-card"><span>資料來源</span><strong>MLB</strong><small>MLB / MiLB Stats API</small></article>
-    </section>
-
-    <section class="section-heading">
-      <div><p class="eyebrow">TODAY</p><h2>今日台灣球員</h2></div>
-    </section>
-    <section id="today-summary" class="player-grid">
-      <article class="player-card"><div class="placeholder">正在整理今日出賽資料…</div></article>
-    </section>
-
-    <section class="section-heading">
-      <div><p class="eyebrow">PLAYER WATCH</p><h2>台灣球員追蹤</h2></div>
-      <button id="refresh-btn" type="button">重新整理</button>
-    </section>
-
-    <section id="players" class="player-grid"></section>
-
-    <section class="roadmap">
-      <p class="eyebrow">BUILD ROADMAP</p>
-      <h2>從資料到真正可用的每日產品</h2>
-      <div class="roadmap-items">
-        <div><b>01</b><span>Live data engine</span><em>DONE</em></div>
-        <div><b>02</b><span>Today + Last 5</span><em>NOW</em></div>
-        <div><b>03</b><span>UI polish</span><em>NEXT</em></div>
-        <div><b>04</b><span>LINE daily alert</span><em>LATER</em></div>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">TAIWAN BASEBALL · MLB / MiLB</p>
+        <h1>台灣旅美球員<br><span>即時戰情室</span></h1>
+        <p class="subtitle">每日賽況、球季數據與旅美動態，一個畫面快速掌握。</p>
+      </div>
+      <div class="summary-grid" aria-label="dashboard summary">
+        <article class="summary-card players-summary">
+          <span class="summary-icon" aria-hidden="true">球</span>
+          <div><small>追蹤球員</small><strong id="player-count">—</strong><em>MLB / MiLB</em></div>
+        </article>
+        <article class="summary-card today-summary-card">
+          <span class="summary-icon" aria-hidden="true">今</span>
+          <div><small>今日出賽</small><strong id="today-count">—</strong><em id="today-date">正在更新</em></div>
+        </article>
+        <article class="summary-card source-summary">
+          <span class="summary-icon" aria-hidden="true">M</span>
+          <div><small>官方資料</small><strong>MLB</strong><em>Stats API</em></div>
+        </article>
       </div>
     </section>
+
+    <section class="dashboard-section today-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">TODAY'S GAMES</p><h2>今日台灣球員</h2></div>
+        <span class="section-note">TAIPEI TIME</span>
+      </div>
+      <section id="today-summary" class="player-grid today-grid" aria-live="polite">
+        <article class="player-card"><div class="placeholder">正在整理今日出賽資料…</div></article>
+      </section>
+    </section>
+
+    <section class="dashboard-section watch-section">
+      <div class="section-heading">
+        <div><p class="eyebrow">PLAYER WATCH</p><h2>台灣球員追蹤</h2></div>
+        <button id="refresh-btn" type="button"><span aria-hidden="true">↻</span> 重新整理</button>
+      </div>
+      <section id="players" class="player-grid" aria-live="polite"></section>
+    </section>
+
+    <footer><span>TWN</span> Official data powered by MLB / MiLB Stats API</footer>
   </main>
   <script src="app.js"></script>
 </body>
