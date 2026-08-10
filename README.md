@@ -8,8 +8,33 @@ A beginner-friendly vibe coding project that tracks Taiwanese baseball players i
 2. Display daily game performance and season statistics.
 3. Build a mobile-friendly dashboard.
 4. Use official MLB data/API where possible.
-5. Add LINE daily notifications in a later phase.
+5. Send LINE notifications for tracker updates.
 
 ## Build approach
 
 This project is intentionally built step by step with AI-assisted vibe coding. The first milestone is a simple working web dashboard; automation and LINE integration come later.
+
+## Send a test LINE notification
+
+The **Test LINE notification** GitHub Actions workflow sends one test push message
+without storing credentials in the repository.
+
+1. Add the Messaging API channel as a friend in LINE.
+2. In the channel's LINE Developers console, find your user ID. It begins with `U`
+   and is different from your LINE display name or custom LINE ID.
+3. Add that value to the GitHub repository as an Actions secret named
+   `LINE_USER_ID`. Keep the existing `LINE_CHANNEL_ACCESS_TOKEN` secret.
+4. Open **Actions → Test LINE notification → Run workflow**.
+
+Both values are read only from GitHub Actions secrets. The workflow stops with a
+clear error if either secret is missing, and the test script never prints either
+secret. The recipient must have added the channel as a friend (and not blocked it)
+for the Messaging API push to be delivered.
+
+To validate the script locally without sending a message, provide dummy values and
+use dry-run mode:
+
+```bash
+LINE_CHANNEL_ACCESS_TOKEN=dummy LINE_USER_ID=Udummy \
+  node scripts/send-line-test.mjs --dry-run
+```
