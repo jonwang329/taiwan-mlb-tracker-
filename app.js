@@ -12,12 +12,8 @@ const players = [
 
 const API='https://statsapi.mlb.com/api/v1';
 const LEVELS=[
-  {sportId:1,label:'MLB'},
-  {sportId:11,label:'AAA'},
-  {sportId:12,label:'AA'},
-  {sportId:13,label:'High-A'},
-  {sportId:14,label:'Single-A'},
-  {sportId:16,label:'Rookie'}
+  {sportId:1,label:'MLB'}, {sportId:11,label:'AAA'}, {sportId:12,label:'AA'},
+  {sportId:13,label:'High-A'}, {sportId:14,label:'Single-A'}, {sportId:16,label:'Rookie'}
 ];
 
 function loadingStats(){ return [["…","Loading"],["…","Live"],["…","Data"]]; }
@@ -36,22 +32,27 @@ function todayInTaiwan(){
   const get=t=>parts.find(p=>p.type===t)?.value;
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
-function newestGame(games=[]){
-  return [...games].filter(g=>g?.date).sort((a,b)=>new Date(b.date)-new Date(a.date))[0]||null;
+function sortedGames(games=[]){
+  return [...games].filter(g=>g?.date).sort((a,b)=>new Date(b.date)-new Date(a.date));
 }
 function activityLabel(last){
   if(!last) return '2026 尚無可用比賽紀錄';
-  const lastDate=dateKey(last.date);
-  const line=gameLine(last.group,last.stat||{});
+  const lastDate=dateKey(last.date), line=gameLine(last.group,last.stat||{});
   const prefix=lastDate===todayInTaiwan()?'TODAY':'TODAY · DID NOT PLAY';
   const latest=lastDate===todayInTaiwan()?'':` ｜ Latest ${lastDate}`;
   return `${prefix}${latest} · ${last.level} · ${line}`;
 }
-function card(player,stats=loadingStats(),latest='正在連接 MLB/MiLB 資料…'){
+function recentGamesHtml(games=[]){
+  const recent=sortedGames(games).slice(0,5);
+  if(!recent.length) return '<div class="placeholder">LAST 5 · 尚無資料</div>';
+  return `<div class="placeholder"><b>LAST 5</b><br>${recent.map(g=>`${dateKey(g.date)} · ${g.level} · ${gameLine(g.group,g.stat||{})}`).join('<br>')}</div>`;
+}
+function card(player,stats=loadingStats(),latest='正在連接 MLB/MiLB 資料…',games=[]){
  return `<article class="player-card">
    <div class="player-top"><div><p>${player.org}</p><h3>${player.name}</h3><p>${player.role}</p></div><span class="status">${player.status}</span></div>
    <div class="stats">${stats.map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
    <div class="placeholder">${latest}</div>
+   ${recentGamesHtml(games)}
  </article>`;
 }
 async function fetchLevel(player,level){
@@ -67,23 +68,18 @@ async function fetchLevel(player,level){
 }
 async function getPlayerData(player){
   const levelResults=(await Promise.all(LEVELS.map(level=>fetchLevel(player,level)))).filter(Boolean);
-  const allGames=levelResults.flatMap(r=>r.games||[]);
-  const last=newestGame(allGames);
-  if(!last) return {stats:statTriplet(player.group),latest:'2026 尚無可用比賽紀錄'};
-
-  // Season numbers follow the level of the player's most recent actual game.
+  const allGames=sortedGames(levelResults.flatMap(r=>r.games||[]));
+  const last=allGames[0]||null;
+  if(!last) return {stats:statTriplet(player.group),latest:'2026 尚無可用比賽紀錄',games:[]};
   const currentLevel=levelResults.find(r=>r.level===last.level);
-  return {
-    stats:statTriplet(player.group,currentLevel?.seasonStat||{}),
-    latest:activityLabel(last)
-  };
+  return {stats:statTriplet(player.group,currentLevel?.seasonStat||{}),latest:activityLabel(last),games:allGames};
 }
 async function renderPlayers(){
   const root=document.querySelector('#players');
   root.innerHTML=players.map(p=>card(p)).join('');
   document.querySelector('#player-count').textContent=players.length;
-  const results=await Promise.all(players.map(async p=>{try{return await getPlayerData(p)}catch(e){return {stats:statTriplet(p.group),latest:'⚠️ MLB/MiLB data 暫時無法載入'}}}));
-  root.innerHTML=players.map((p,i)=>card(p,results[i].stats,results[i].latest)).join('');
+  const results=await Promise.all(players.map(async p=>{try{return await getPlayerData(p)}catch(e){return {stats:statTriplet(p.group),latest:'⚠️ MLB/MiLB data 暫時無法載入',games:[]}}}));
+  root.innerHTML=players.map((p,i)=>card(p,results[i].stats,results[i].latest,results[i].games)).join('');
 }
 document.querySelector('#refresh-btn').addEventListener('click',async()=>{
   const button=document.querySelector('#refresh-btn'); button.textContent='更新中…';
