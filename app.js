@@ -3,12 +3,11 @@ const players = [
   { id: 691907, name: "鄭宗哲 Tsung-Che Cheng", role: "SS", org: "Boston Red Sox · MLB/AAA", group: "hitting", status: "40-MAN", sportId: 1 },
   { id: 678906, name: "鄧愷威 Kai-Wei Teng", role: "RHP", org: "Houston Astros · MLB", group: "pitching", status: "MLB", sportId: 1 },
   { id: 827734, name: "林維恩 Wei-En Lin", role: "LHP", org: "Athletics · AAA", group: "pitching", status: "PROSPECT", sportId: 11 },
-  { id: null, name: "賴謙凡 Chien-Fan Lai", role: "RHP", org: "New York Yankees · DSL", group: "pitching", status: "NEW SIGNEE", sportId: 16 },
   { id: 801179, name: "林昱珉 Yu-Min Lin", role: "LHP", org: "Arizona Diamondbacks · AAA", group: "pitching", status: "PROSPECT", sportId: 11 },
   { id: 828667, name: "柯敬賢 Ching-Hsien Ko", role: "OF", org: "Los Angeles Dodgers · MiLB", group: "hitting", status: "PROSPECT", sportId: 12 },
   { id: 813820, name: "林振瑋 Chen-Wei Lin", role: "RHP", org: "St. Louis Cardinals · AA", group: "pitching", status: "PROSPECT", sportId: 12 },
   { id: 800018, name: "莊陳仲敖 Chen Zhong-Ao Zhuang", role: "RHP", org: "Athletics · AAA / 40-man", group: "pitching", status: "40-MAN", sportId: 11 },
-  { id: 808486, name: "李晨薰 Chen-Hsun Lee", role: "RHP", org: "San Francisco Giants · A", group: "pitching", status: "PROSPECT", sportId: 13 }
+  { id: 808486, name: "李晨薰 Chen-Hsun Lee", role: "RHP", org: "San Francisco Giants · San Jose (Single-A)", group: "pitching", status: "PROSPECT", sportId: 14 }
 ];
 
 const API='https://statsapi.mlb.com/api/v1';
@@ -33,7 +32,6 @@ function card(player,stats=loadingStats(),latest='正在連接 MLB/MiLB 資料�
 }
 
 async function getPlayerData(player){
- if(!player.id) return {stats:statTriplet(player.group),latest:'2026 新簽約 · 尚待 MLB/MiLB Stats ID 建立'};
  const sport=`&sportId=${player.sportId||1}`;
  const seasonUrl=`${API}/people/${player.id}/stats?stats=season&group=${player.group}&season=2026${sport}`;
  const logUrl=`${API}/people/${player.id}/stats?stats=gameLog&group=${player.group}&season=2026${sport}`;
