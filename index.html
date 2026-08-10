@@ -3,65 +3,56 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#071226" />
+  <meta name="theme-color" content="#ffffff" />
   <title>Taiwan MLB Tracker</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="app-shell">
-    <header class="topbar">
-      <a class="brand" href="#" aria-label="Taiwan MLB Tracker 首頁">
-        <span class="brand-mark" aria-hidden="true">TW</span>
-        <span><b>Taiwan MLB</b><small>球員追蹤中心</small></span>
-      </a>
-      <div class="header-actions">
-        <span class="line-pill"><i aria-hidden="true"></i> LINE 通知已排程</span>
-        <span class="live-pill"><i aria-hidden="true"></i> LIVE DATA</span>
-      </div>
-    </header>
+  <div class="dashboard-shell">
+    <aside class="sidebar">
+      <a class="side-brand" href="#overview"><span>TW</span><b>TAIWAN<br>MLB TRACKER</b></a>
+      <nav aria-label="主要導覽">
+        <a class="active" href="#overview"><i>⌂</i><span>總覽<small>Overview</small></span></a>
+        <a href="#players"><i>人</i><span>球員<small>Players</small></span></a>
+        <a href="#players"><i>◇</i><span>今日賽事<small>Games</small></span></a>
+        <a href="#statistics"><i>▥</i><span>數據<small>Statistics</small></span></a>
+        <a href="#statistics"><i>↗</i><span>近期表現<small>Trends</small></span></a>
+        <a href="#statistics"><i>◷</i><span>歷史紀錄<small>History</small></span></a>
+      </nav>
+      <section class="system-status"><p><i></i> AUTO UPDATE</p><b>MLB Stats API</b><span id="side-update">Connecting…</span></section>
+    </aside>
 
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">TAIWAN BASEBALL · MLB / MiLB</p>
-        <h1>台灣旅美球員<br><span>即時戰情室</span></h1>
-        <p class="subtitle">每日賽況、球季數據與旅美動態，一個畫面快速掌握。</p>
-      </div>
-      <div class="summary-grid" aria-label="dashboard summary">
-        <article class="summary-card players-summary">
-          <span class="summary-icon" aria-hidden="true">球</span>
-          <div><small>追蹤球員</small><strong id="player-count">—</strong><em>MLB / MiLB</em></div>
-        </article>
-        <article class="summary-card today-summary-card">
-          <span class="summary-icon" aria-hidden="true">今</span>
-          <div><small>今日出賽</small><strong id="today-count">—</strong><em id="today-date">正在更新</em></div>
-        </article>
-        <article class="summary-card source-summary">
-          <span class="summary-icon" aria-hidden="true">M</span>
-          <div><small>官方資料</small><strong>MLB</strong><em>Stats API</em></div>
-        </article>
-      </div>
-    </section>
+    <main class="main" id="overview">
+      <header class="topbar">
+        <div class="mobile-mark">TW</div>
+        <div class="title"><h1>TAIWAN MLB TRACKER</h1><p>台灣球員每日表現追蹤</p></div>
+        <div class="top-meta"><div><b id="today-date">—</b><span>TODAY</span></div><div><b id="last-update">—</b><span>LAST UPDATE</span></div><strong><i></i> LIVE DATA</strong></div>
+      </header>
 
-    <section class="dashboard-section today-section">
-      <div class="section-heading">
-        <div><p class="eyebrow">TODAY'S GAMES</p><h2>今天台灣球員</h2></div>
-        <span class="section-note">TAIPEI TIME</span>
-      </div>
-      <section id="today-summary" class="player-grid today-grid" aria-live="polite">
-        <article class="player-card"><div class="placeholder">正在整理今日出賽資料…</div></article>
+      <section class="metrics" aria-label="今日摘要">
+        <article><span>追蹤球員</span><b id="player-count">—</b><small>TRACKED</small></article>
+        <article><span>今日出賽</span><b id="today-count">—</b><small>PLAYED</small></article>
+        <article><span>今日亮點</span><b id="highlight-count">—</b><small>HIGHLIGHTS</small></article>
+        <article><span>MLB 球員</span><b id="mlb-count">—</b><small>TOP LEVEL</small></article>
+        <article><span>今日安打 / 三振</span><b id="daily-total">—</b><small>HITS / K</small></article>
       </section>
-    </section>
 
-    <section class="dashboard-section watch-section">
-      <div class="section-heading">
-        <div><p class="eyebrow">PLAYER WATCH</p><h2>台灣球員追蹤</h2></div>
-        <button id="refresh-btn" type="button"><span aria-hidden="true">↻</span> 重新整理</button>
-      </div>
-      <section id="players" class="player-grid" aria-live="polite"></section>
-    </section>
+      <section class="panel players-panel" id="players">
+        <div class="section-head"><div><h2>今日台灣球員表現</h2><p>TODAY'S TAIWAN PLAYERS</p></div><button id="refresh-btn" type="button">↻ 更新資料</button></div>
+        <div id="player-overview" class="player-overview" aria-live="polite"></div>
+      </section>
 
-    <footer><span>TWN</span> Official data powered by MLB / MiLB Stats API</footer>
-  </main>
+      <section class="lower-grid" id="statistics">
+        <section class="panel table-panel">
+          <div class="section-head"><div><h2>球季 / 近期表現</h2><p>SEASON & RECENT PERFORMANCE</p></div></div>
+          <div class="table-scroll"><table><thead><tr><th>PLAYER</th><th>LEVEL</th><th>TODAY</th><th>AVG / ERA</th><th>OPS / WHIP</th><th>HR / K</th><th>LAST 5</th></tr></thead><tbody id="stats-body"></tbody></table></div>
+        </section>
+        <aside class="panel insights-panel"><div class="section-head"><div><h2>今日洞察</h2><p>TODAY'S INSIGHTS</p></div></div><div id="insights"></div></aside>
+      </section>
+
+      <footer>Official data powered by MLB / MiLB Stats API</footer>
+    </main>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>
