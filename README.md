@@ -38,3 +38,24 @@ use dry-run mode:
 LINE_CHANNEL_ACCESS_TOKEN=dummy LINE_USER_ID=Udummy \
   node scripts/send-line-test.mjs --dry-run
 ```
+
+## Automatic LINE tracker updates
+
+The **LINE daily tracker updates** workflow connects the same tracked player list
+to live MLB Stats API data. It runs every day at 07:00, 08:00, 09:00, and 12:00
+in `Asia/Taipei` (the workflow cron expressions are the corresponding UTC times).
+
+- The three morning checks compare a cached snapshot and send only when a game,
+  season line, roster status, team, or transaction has changed. A first run saves
+  a baseline without creating a false "update" notification.
+- The noon run always sends every player's playing status, game result and level,
+  batting/pitching line, season statistics, latest transaction/status, and a short
+  analysis. Because the run happens around midnight in the U.S., the report labels
+  the applicable official game date (America/New_York) separately from its Taiwan
+  delivery date.
+- The snapshot is saved only after a successful data fetch and LINE operation, so
+  a temporary API or delivery failure is retried rather than silently accepted.
+
+The workflow uses the existing `LINE_CHANNEL_ACCESS_TOKEN` and `LINE_USER_ID`
+Actions secrets; no credential is stored in the source. You can also run either
+mode manually from the Actions page.
