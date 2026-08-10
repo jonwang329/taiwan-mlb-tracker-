@@ -31,6 +31,11 @@ function todayInTaiwan(){
   const get=t=>parts.find(p=>p.type===t)?.value;
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
+function newestGame(games=[]){
+  return [...games]
+    .filter(g=>g?.date)
+    .sort((a,b)=>new Date(b.date)-new Date(a.date))[0] || null;
+}
 function activityLabel(last){
   if(!last) return '2026 尚無可用比賽紀錄';
   const lastDate=dateKey(last.date);
@@ -56,7 +61,7 @@ async function getPlayerData(player){
  const season=await seasonRes.json(); const log=await logRes.json();
  const seasonStat=season.stats?.[0]?.splits?.[0]?.stat||{};
  const games=log.stats?.[0]?.splits||[];
- const last=games.length?games[games.length-1]:null;
+ const last=newestGame(games);
  if(last) last.group=player.group;
  return {stats:statTriplet(player.group,seasonStat),latest:activityLabel(last)};
 }
