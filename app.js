@@ -9,80 +9,20 @@ const players = [
   { id: 800018, name: "莊陳仲敖 Chen Zhong-Ao Zhuang", role: "RHP", org: "Athletics", group: "pitching", status: "TRACKING" },
   { id: 808486, name: "李晨薰 Chen-Hsun Lee", role: "RHP", org: "San Francisco Giants", group: "pitching", status: "PROSPECT" }
 ];
-
 const API='https://statsapi.mlb.com/api/v1';
-const LEVELS=[
-  {sportId:1,label:'MLB'}, {sportId:11,label:'AAA'}, {sportId:12,label:'AA'},
-  {sportId:13,label:'High-A'}, {sportId:14,label:'Single-A'}, {sportId:16,label:'Rookie'}
-];
-
-function loadingStats(){ return [["…","Loading"],["…","Live"],["…","Data"]]; }
-function statTriplet(group,s={}){
-  return group==='pitching'
-    ? [[s.era??'—','ERA'],[s.strikeOuts??'—','SO'],[s.inningsPitched??'—','IP']]
-    : [[s.avg??'—','AVG'],[s.homeRuns??'—','HR'],[s.ops??'—','OPS']];
-}
-function gameLine(group,s={}){
-  if(group==='pitching') return `${s.inningsPitched??'0'} IP · ${s.strikeOuts??0} K · ${s.earnedRuns??0} ER`;
-  return `${s.hits??0}-for-${s.atBats??0} · ${s.rbi??0} RBI · ${s.homeRuns??0} HR`;
-}
-function dateKey(value){ return value ? String(value).slice(0,10) : ''; }
-function todayInTaiwan(){
-  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
-  const get=t=>parts.find(p=>p.type===t)?.value;
-  return `${get('year')}-${get('month')}-${get('day')}`;
-}
-function sortedGames(games=[]){
-  return [...games].filter(g=>g?.date).sort((a,b)=>new Date(b.date)-new Date(a.date));
-}
-function activityLabel(last){
-  if(!last) return '2026 尚無可用比賽紀錄';
-  const lastDate=dateKey(last.date), line=gameLine(last.group,last.stat||{});
-  const prefix=lastDate===todayInTaiwan()?'TODAY':'TODAY · DID NOT PLAY';
-  const latest=lastDate===todayInTaiwan()?'':` ｜ Latest ${lastDate}`;
-  return `${prefix}${latest} · ${last.level} · ${line}`;
-}
-function recentGamesHtml(games=[]){
-  const recent=sortedGames(games).slice(0,5);
-  if(!recent.length) return '<div class="placeholder">LAST 5 · 尚無資料</div>';
-  return `<div class="placeholder"><b>LAST 5</b><br>${recent.map(g=>`${dateKey(g.date)} · ${g.level} · ${gameLine(g.group,g.stat||{})}`).join('<br>')}</div>`;
-}
-function card(player,stats=loadingStats(),latest='正在連接 MLB/MiLB 資料…',games=[]){
- return `<article class="player-card">
-   <div class="player-top"><div><p>${player.org}</p><h3>${player.name}</h3><p>${player.role}</p></div><span class="status">${player.status}</span></div>
-   <div class="stats">${stats.map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
-   <div class="placeholder">${latest}</div>
-   ${recentGamesHtml(games)}
- </article>`;
-}
-async function fetchLevel(player,level){
-  const base=`${API}/people/${player.id}/stats?group=${player.group}&season=2026&sportId=${level.sportId}`;
-  try{
-    const [seasonRes,logRes]=await Promise.all([fetch(`${base}&stats=season`),fetch(`${base}&stats=gameLog`)]);
-    if(!seasonRes.ok||!logRes.ok) return null;
-    const [season,log]=await Promise.all([seasonRes.json(),logRes.json()]);
-    const seasonStat=season.stats?.[0]?.splits?.[0]?.stat||null;
-    const games=(log.stats?.[0]?.splits||[]).map(g=>({...g,group:player.group,level:level.label}));
-    return {level:level.label,seasonStat,games};
-  }catch(e){ return null; }
-}
-async function getPlayerData(player){
-  const levelResults=(await Promise.all(LEVELS.map(level=>fetchLevel(player,level)))).filter(Boolean);
-  const allGames=sortedGames(levelResults.flatMap(r=>r.games||[]));
-  const last=allGames[0]||null;
-  if(!last) return {stats:statTriplet(player.group),latest:'2026 尚無可用比賽紀錄',games:[]};
-  const currentLevel=levelResults.find(r=>r.level===last.level);
-  return {stats:statTriplet(player.group,currentLevel?.seasonStat||{}),latest:activityLabel(last),games:allGames};
-}
-async function renderPlayers(){
-  const root=document.querySelector('#players');
-  root.innerHTML=players.map(p=>card(p)).join('');
-  document.querySelector('#player-count').textContent=players.length;
-  const results=await Promise.all(players.map(async p=>{try{return await getPlayerData(p)}catch(e){return {stats:statTriplet(p.group),latest:'⚠️ MLB/MiLB data 暫時無法載入',games:[]}}}));
-  root.innerHTML=players.map((p,i)=>card(p,results[i].stats,results[i].latest,results[i].games)).join('');
-}
-document.querySelector('#refresh-btn').addEventListener('click',async()=>{
-  const button=document.querySelector('#refresh-btn'); button.textContent='更新中…';
-  await renderPlayers(); button.textContent='已更新資料 ✓'; setTimeout(()=>button.textContent='重新整理',1400);
-});
+const LEVELS=[{sportId:1,label:'MLB'},{sportId:11,label:'AAA'},{sportId:12,label:'AA'},{sportId:13,label:'High-A'},{sportId:14,label:'Single-A'},{sportId:16,label:'Rookie'}];
+function loadingStats(){return [["…","Loading"],["…","Live"],["…","Data"]];}
+function statTriplet(group,s={}){return group==='pitching'?[[s.era??'—','ERA'],[s.strikeOuts??'—','SO'],[s.inningsPitched??'—','IP']]:[[s.avg??'—','AVG'],[s.homeRuns??'—','HR'],[s.ops??'—','OPS']];}
+function gameLine(group,s={}){return group==='pitching'?`${s.inningsPitched??'0'} IP · ${s.strikeOuts??0} K · ${s.earnedRuns??0} ER`:`${s.hits??0}-for-${s.atBats??0} · ${s.rbi??0} RBI · ${s.homeRuns??0} HR`;}
+function dateKey(v){return v?String(v).slice(0,10):'';}
+function todayInTaiwan(){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=t=>parts.find(p=>p.type===t)?.value;return `${get('year')}-${get('month')}-${get('day')}`;}
+function sortedGames(games=[]){return [...games].filter(g=>g?.date).sort((a,b)=>new Date(b.date)-new Date(a.date));}
+function activityLabel(last){if(!last)return '2026 尚無可用比賽紀錄';const d=dateKey(last.date),line=gameLine(last.group,last.stat||{});return d===todayInTaiwan()?`TODAY · ${last.level} · ${line}`:`TODAY · DID NOT PLAY ｜ Latest ${d} · ${last.level} · ${line}`;}
+function recentGamesHtml(games=[]){const recent=sortedGames(games).slice(0,5);if(!recent.length)return '<div class="placeholder">LAST 5 · 尚無資料</div>';return `<div class="placeholder"><b>LAST 5</b><br>${recent.map(g=>`${dateKey(g.date)} · ${g.level} · ${gameLine(g.group,g.stat||{})}`).join('<br>')}</div>`;}
+function card(player,stats=loadingStats(),latest='正在連接 MLB/MiLB 資料…',games=[]){return `<article class="player-card"><div class="player-top"><div><p>${player.org}</p><h3>${player.name}</h3><p>${player.role}</p></div><span class="status">${player.status}</span></div><div class="stats">${stats.map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('')}</div><div class="placeholder">${latest}</div>${recentGamesHtml(games)}</article>`;}
+async function fetchLevel(player,level){const base=`${API}/people/${player.id}/stats?group=${player.group}&season=2026&sportId=${level.sportId}`;try{const [seasonRes,logRes]=await Promise.all([fetch(`${base}&stats=season`),fetch(`${base}&stats=gameLog`)]);if(!seasonRes.ok||!logRes.ok)return null;const [season,log]=await Promise.all([seasonRes.json(),logRes.json()]);const seasonStat=season.stats?.[0]?.splits?.[0]?.stat||null;const games=(log.stats?.[0]?.splits||[]).map(g=>({...g,group:player.group,level:level.label}));return {level:level.label,seasonStat,games};}catch(e){return null;}}
+async function getPlayerData(player){const levelResults=(await Promise.all(LEVELS.map(level=>fetchLevel(player,level)))).filter(Boolean);const allGames=sortedGames(levelResults.flatMap(r=>r.games||[]));const last=allGames[0]||null;if(!last)return {stats:statTriplet(player.group),latest:'2026 尚無可用比賽紀錄',games:[],last:null};const currentLevel=levelResults.find(r=>r.level===last.level);return {stats:statTriplet(player.group,currentLevel?.seasonStat||{}),latest:activityLabel(last),games:allGames,last};}
+function renderToday(results){const today=todayInTaiwan();const played=results.map((r,i)=>({result:r,player:players[i]})).filter(x=>dateKey(x.result.last?.date)===today);document.querySelector('#today-count').textContent=played.length;document.querySelector('#today-date').textContent=today;const root=document.querySelector('#today-summary');if(!played.length){root.innerHTML='<article class="player-card"><div class="placeholder"><b>今天目前沒有追蹤球員的已完成出賽紀錄。</b><br>稍後按「重新整理」即可再次查詢。</div></article>';return;}root.innerHTML=played.map(x=>`<article class="player-card"><div class="player-top"><div><p>${x.player.org}</p><h3>${x.player.name}</h3><p>${x.result.last.level}</p></div><span class="status">TODAY</span></div><div class="placeholder"><b>${gameLine(x.player.group,x.result.last.stat||{})}</b></div></article>`).join('');}
+async function renderPlayers(){const root=document.querySelector('#players');root.innerHTML=players.map(p=>card(p)).join('');document.querySelector('#player-count').textContent=players.length;const results=await Promise.all(players.map(async p=>{try{return await getPlayerData(p)}catch(e){return {stats:statTriplet(p.group),latest:'⚠️ MLB/MiLB data 暫時無法載入',games:[],last:null}}}));root.innerHTML=players.map((p,i)=>card(p,results[i].stats,results[i].latest,results[i].games)).join('');renderToday(results);}
+document.querySelector('#refresh-btn').addEventListener('click',async()=>{const button=document.querySelector('#refresh-btn');button.textContent='更新中…';await renderPlayers();button.textContent='已更新資料 ✓';setTimeout(()=>button.textContent='重新整理',1400);});
 renderPlayers();
