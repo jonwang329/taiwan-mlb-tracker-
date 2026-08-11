@@ -13,8 +13,8 @@ const DEFAULT_PLAYERS = [
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'content-type',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Cache-Control': 'no-store'
 };
 const json = (body, status=200) => new Response(JSON.stringify(body), {status, headers:{...cors,'Content-Type':'application/json; charset=utf-8'}});
@@ -26,10 +26,6 @@ async function readPlayers(env){
   }
   return players;
 }
-function authorized(request, env){
-  if (!env.ADMIN_TOKEN) return false;
-  return request.headers.get('authorization') === `Bearer ${env.ADMIN_TOKEN}`;
-}
 
 export default {
   async fetch(request, env) {
@@ -40,25 +36,7 @@ export default {
       const players = await readPlayers(env);
       return json({players, count:players.length, updatedAt:new Date().toISOString()});
     }
-    if (!authorized(request, env)) return json({error:'unauthorized'}, 401);
-    if (request.method === 'POST' && url.pathname === '/players') {
-      const player = await request.json().catch(()=>null);
-      if (!player || !Number.isInteger(Number(player.id)) || !player.name || !['hitting','pitching'].includes(player.group)) return json({error:'invalid player'}, 400);
-      const players = await readPlayers(env);
-      if (players.some(p=>Number(p.id)===Number(player.id))) return json({error:'already tracked'}, 409);
-      const next = [...players, {id:Number(player.id),name:String(player.name),role:String(player.role||'—'),org:String(player.org||'MLB / MiLB'),group:player.group}];
-      await env.OBSERVATION_LIST.put(KEY, JSON.stringify(next));
-      return json({ok:true, players:next}, 201);
-    }
-    const match = url.pathname.match(/^\/players\/(\d+)$/);
-    if (request.method === 'DELETE' && match) {
-      const id = Number(match[1]);
-      const players = await readPlayers(env);
-      const next = players.filter(p=>Number(p.id)!==id);
-      if (next.length === players.length) return json({error:'not tracked'}, 404);
-      await env.OBSERVATION_LIST.put(KEY, JSON.stringify(next));
-      return json({ok:true, players:next});
-    }
+    if (request.method !== 'GET') return json({error:'read only'}, 405);
     return json({error:'not found'}, 404);
   }
 };
