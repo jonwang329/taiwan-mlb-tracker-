@@ -1,5 +1,5 @@
 const KEY = 'players';
-const OWNER_KEY_SHA256 = '560c461085566629688dd105c9c940f7be6f7542a0d24860643cf44c89840f6a';
+const OWNER_KEY_SHA256 = '3d917f84bd31e2c18597e0858262ba35af11a9fd12f050df4e514984f5a49941';
 const TRUSTED_ORIGINS = new Set(['https://jonwang329.github.io']);
 const DEFAULT_PLAYERS = [
   {id:701678,name:'李灝宇 Hao-Yu Lee',role:'2B',org:'Detroit Tigers',group:'hitting'},
@@ -16,7 +16,7 @@ const DEFAULT_PLAYERS = [
 function cors(request){
   const origin=request.headers.get('Origin')||'';
   return {
-    'Access-Control-Allow-Origin': TRUSTED_ORIGINS.has(origin)?origin:'*',
+    'Access-Control-Allow-Origin': TRUSTED_ORIGINS.has(origin)?origin:'null',
     'Access-Control-Allow-Headers': 'authorization, content-type',
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Vary': 'Origin',
@@ -38,8 +38,6 @@ async function sha256Hex(value){
   return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 async function authorized(request){
-  const origin=request.headers.get('Origin')||'';
-  if(TRUSTED_ORIGINS.has(origin)) return true;
   const header=request.headers.get('authorization')||'';
   const token=header.startsWith('Bearer ')?header.slice(7):'';
   if(!token)return false;
@@ -59,10 +57,14 @@ export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, {status:204, headers:cors(request)});
     const url = new URL(request.url);
-    if (request.method === 'GET' && url.pathname === '/health') return json(request,{ok:true, storage:'Cloudflare Workers KV', directSiteWrite:true});
+    if (request.method === 'GET' && url.pathname === '/health') return json(request,{ok:true, storage:'Cloudflare Workers KV', ownerAuth:true});
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/players')) {
       const players = await readPlayers(env);
       return json(request,{players, count:players.length, updatedAt:new Date().toISOString()});
+    }
+    if (request.method === 'POST' && url.pathname === '/owner/verify') {
+      if (!(await authorized(request))) return json(request,{error:'unauthorized'},401);
+      return json(request,{ok:true});
     }
     if (!(await authorized(request))) return json(request,{error:'unauthorized'}, 401);
     if (request.method === 'POST' && url.pathname === '/players') {
