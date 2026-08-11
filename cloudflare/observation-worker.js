@@ -1,4 +1,5 @@
 const KEY = 'players';
+const OWNER_KEY_SHA256 = '560c461085566629688dd105c9c940f7be6f7542a0d24860643cf44c89840f6a';
 const DEFAULT_PLAYERS = [
   {id:701678,name:'李灝宇 Hao-Yu Lee',role:'2B',org:'Detroit Tigers',group:'hitting'},
   {id:691907,name:'鄭宗哲 Tsung-Che Cheng',role:'SS',org:'Boston Red Sox',group:'hitting'},
@@ -13,8 +14,8 @@ const DEFAULT_PLAYERS = [
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'content-type',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Cache-Control': 'no-store'
 };
 const json = (body, status=200) => new Response(JSON.stringify(body), {status, headers:{...cors,'Content-Type':'application/json; charset=utf-8'}});
@@ -26,17 +27,58 @@ async function readPlayers(env){
   }
   return players;
 }
+async function sha256Hex(value){
+  const bytes=new TextEncoder().encode(value);
+  const digest=await crypto.subtle.digest('SHA-256',bytes);
+  return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function authorized(request){
+  const header=request.headers.get('authorization')||'';
+  const token=header.startsWith('Bearer ')?header.slice(7):'';
+  if(!token)return false;
+  return (await sha256Hex(token))===OWNER_KEY_SHA256;
+}
+async function mlbPlayer(id){
+  const response=await fetch(`https://statsapi.mlb.com/api/v1/people/${id}?hydrate=currentTeam`);
+  if(!response.ok)return null;
+  const person=(await response.json()).people?.[0];
+  if(!person?.id||!person?.fullName)return null;
+  const role=person.primaryPosition?.abbreviation||person.primaryPosition?.name||'—';
+  const group=person.primaryPosition?.type==='Pitcher'||person.primaryPosition?.name==='Pitcher'?'pitching':'hitting';
+  return {id:Number(person.id),name:String(person.fullName),role:String(role),org:String(person.currentTeam?.name||'MLB / MiLB'),group};
+}
 
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, {status:204, headers:cors});
     const url = new URL(request.url);
-    if (request.method === 'GET' && url.pathname === '/health') return json({ok:true, storage:'Cloudflare Workers KV'});
+    if (request.method === 'GET' && url.pathname === '/health') return json({ok:true, storage:'Cloudflare Workers KV', ownerWrite:true});
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/players')) {
       const players = await readPlayers(env);
       return json({players, count:players.length, updatedAt:new Date().toISOString()});
     }
-    if (request.method !== 'GET') return json({error:'read only'}, 405);
-    return json({error:'not found'}, 404);
+    if (!(await authorized(request))) return json({error:'unauthorized'}, 401);
+    if (request.method === 'POST' && url.pathname === '/players') {
+      const body=await request.json().catch(()=>null);
+      const id=Number(body?.id);
+      if(!Number.isInteger(id)||id<=0)return json({error:'invalid player id'},400);
+      const players=await readPlayers(env);
+      if(players.some(p=>Number(p.id)===id))return json({error:'already tracked'},409);
+      const player=await mlbPlayer(id);
+      if(!player)return json({error:'MLB player not found'},404);
+      const next=[...players,player];
+      await env.OBSERVATION_LIST.put(KEY,JSON.stringify(next));
+      return json({ok:true,player,players:next},201);
+    }
+    const match=url.pathname.match(/^\/players\/(\d+)$/);
+    if(request.method==='DELETE'&&match){
+      const id=Number(match[1]);
+      const players=await readPlayers(env);
+      const next=players.filter(p=>Number(p.id)!==id);
+      if(next.length===players.length)return json({error:'not tracked'},404);
+      await env.OBSERVATION_LIST.put(KEY,JSON.stringify(next));
+      return json({ok:true,players:next});
+    }
+    return json({error:'not found'},404);
   }
 };
