@@ -2,7 +2,7 @@ name: LINE daily tracker updates
 
 on:
   schedule:
-    # GitHub cron uses UTC; these are 07:00, 08:00, 09:00 and 12:00 in Asia/Taipei (UTC+8).
+    # GitHub cron is always UTC. 23:00 UTC is 07:00 Asia/Taipei on the following day.
     - cron: "0 23 * * *"
     - cron: "0 0 * * *"
     - cron: "0 1 * * *"
@@ -29,6 +29,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Log schedule and configuration preflight
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          HAS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN != '' }}
+          HAS_DESTINATION: ${{ secrets.LINE_DESTINATION_ID != '' || secrets.LINE_USER_ID != '' }}
+        run: |
+          echo "Event: $EVENT_NAME; cron: ${SCHEDULE:-manual}"
+          echo "Started UTC: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "Started Taiwan: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "LINE token configured: $HAS_TOKEN; destination configured: $HAS_DESTINATION"
+          [[ "$HAS_TOKEN" == "true" ]] || { echo "::error::LINE_CHANNEL_ACCESS_TOKEN is not configured"; exit 1; }
+          [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is not configured"; exit 1; }
       - name: Restore the last successful tracker snapshot
         uses: actions/cache/restore@v4
         with:
@@ -44,7 +57,7 @@ jobs:
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             mode="$MANUAL_MODE"
-          elif [[ "$SCHEDULE" == "0 4 * * *" ]]; then
+          elif [[ "$SCHEDULE" == "0 23 * * *" || "$SCHEDULE" == "0 4 * * *" ]]; then
             mode="summary"
           else
             mode="changes"
@@ -53,6 +66,7 @@ jobs:
       - name: Fetch tracker data and notify LINE
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
         run: node scripts/send-line-update.mjs --mode=${{ steps.notification.outputs.mode }}
       - name: Save tracker snapshot
