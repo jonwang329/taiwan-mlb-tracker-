@@ -1,15 +1,32 @@
 (()=>{
 const style=document.createElement('link');style.rel='stylesheet';style.href='watchlist.css';document.head.appendChild(style);
 const API='https://statsapi.mlb.com/api/v1';
-const REPO='jonwang329/taiwan-mlb-tracker-';
+const WATCHLIST_API=String(window.WATCHLIST_API_URL||'').replace(/\/$/,'');
 const SPORT_IDS=[1,11,12,13,14,16];
 const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_160,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 const $=s=>document.querySelector(s);
-const modal=$('#watchlist-modal'), open=$('#manage-players-btn'), close=$('#watchlist-close'), form=$('#player-search-form'), input=$('#player-search'), searchButton=$('#player-search-button'), results=$('#player-search-results'), current=$('#watchlist-current'), status=$('#watchlist-status');
+const modal=$('#watchlist-modal'),open=$('#manage-players-btn'),close=$('#watchlist-close'),form=$('#player-search-form'),input=$('#player-search'),searchButton=$('#player-search-button'),results=$('#player-search-results'),current=$('#watchlist-current'),status=$('#watchlist-status');
 const players=()=>window.trackedPlayers||[];
-function issueUrl(action,p){const title=`[watchlist:${action}] playerId=${p.id}`;const body=`Taiwan MLB Tracker observation-list change request.\n\nAction: ${action}\nPlayer ID: ${p.id}\nPlayer: ${p.fullName||p.name||''}\n\nThis request is validated by GitHub Actions before tracked-players.json is changed.`;return `https://github.com/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;}
-function renderCurrent(){current.innerHTML=players().map(p=>`<div class="watch-row"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${p.name}</strong><span>${p.org||'MLB / MiLB'} · ${p.role||'—'}</span></div><a class="remove-player" href="${issueUrl('remove',{id:p.id,name:p.name})}" target="_blank" rel="noopener" aria-label="移除 ${p.name}">移除</a></div>`).join('')||'<p class="watch-empty">目前沒有追蹤球員</p>';}
-function show(){renderCurrent();modal.hidden=false;document.body.classList.add('modal-open');setTimeout(()=>input.focus(),30)}
+function pin(){let value=sessionStorage.getItem('tracker-owner-pin');if(!value){value=prompt('Owner PIN（只用來授權修改觀察名單）')||'';if(value)sessionStorage.setItem('tracker-owner-pin',value);}return value;}
+function clearPin(){sessionStorage.removeItem('tracker-owner-pin');}
+async function mutate(action,playerId){
+  if(!WATCHLIST_API){status.textContent='Observation List API 尚未完成設定；目前不會跳轉 GitHub。';return;}
+  const ownerPin=pin();if(!ownerPin){status.textContent='未輸入 Owner PIN，名單沒有變更。';return;}
+  status.textContent=action==='add'?'正在加入球員…':'正在移除球員…';
+  try{
+    const r=await fetch(`${WATCHLIST_API}/watchlist/${action}`,{method:'POST',headers:{'Content-Type':'application/json','X-Owner-Pin':ownerPin},body:JSON.stringify({playerId:Number(playerId)})});
+    const data=await r.json().catch(()=>({}));
+    if(r.status===401){clearPin();throw new Error('Owner PIN 不正確，請重新輸入。');}
+    if(!r.ok)throw new Error(data.error||`更新失敗 (${r.status})`);
+    window.trackedPlayers=data.players||[];
+    status.textContent=action==='add'?'已加入觀察名單。':'已從觀察名單移除。';
+    renderCurrent();
+    results.innerHTML='';input.value='';
+    if(typeof window.reloadTrackedPlayers==='function')await window.reloadTrackedPlayers();
+  }catch(error){status.textContent=error.message||'更新觀察名單失敗';console.error(error);}
+}
+function renderCurrent(){current.innerHTML=players().map(p=>`<div class="watch-row"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${p.name}</strong><span>${p.org||'MLB / MiLB'} · ${p.role||'—'}</span></div><button class="remove-player" type="button" data-remove="${p.id}" aria-label="移除 ${p.name}">移除</button></div>`).join('')||'<p class="watch-empty">目前沒有追蹤球員</p>';current.querySelectorAll('[data-remove]').forEach(button=>button.addEventListener('click',()=>mutate('remove',button.dataset.remove)));}
+function show(){renderCurrent();modal.hidden=false;document.body.classList.add('modal-open');if(!WATCHLIST_API)status.textContent='名單後端尚未完成設定；搜尋可以使用，但 Add / Delete 暫不會寫入。';setTimeout(()=>input.focus(),30)}
 function hide(){modal.hidden=true;document.body.classList.remove('modal-open');input.value='';results.innerHTML='';status.textContent=''}
 open.addEventListener('click',show);close.addEventListener('click',hide);modal.addEventListener('click',e=>{if(e.target===modal)hide()});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!modal.hidden)hide()});
 let timer;
@@ -22,33 +39,19 @@ async function enrichPlayer(p){try{const data=await fetchJson(`${API}/people/${p
 function relevance(p,q){const name=normalize(p.fullName),needle=normalize(q);if(name===needle)return 0;if(name.startsWith(needle))return 1;if(name.includes(needle))return 2;const words=needle.split(' ').filter(Boolean);return words.every(w=>name.includes(w))?3:9;}
 function nameMatches(p,q){const name=normalize(p.fullName),needle=normalize(q),words=needle.split(' ').filter(Boolean);return name===needle||words.every(w=>name.includes(w));}
 let directoryCachePromise;
-async function loadPlayerDirectory(){
-  if(!directoryCachePromise){
-    const season=new Date().getFullYear();
-    directoryCachePromise=Promise.allSettled(SPORT_IDS.map(id=>fetchJson(`${API}/sports/${id}/players?season=${season}`))).then(items=>{
-      const all=[];for(const item of items)if(item.status==='fulfilled')all.push(...(item.value.people||[]));
-      return [...new Map(all.map(p=>[Number(p.id),p])).values()];
-    });
-  }
-  return directoryCachePromise;
-}
+async function loadPlayerDirectory(){if(!directoryCachePromise){const season=new Date().getFullYear();directoryCachePromise=Promise.allSettled(SPORT_IDS.map(id=>fetchJson(`${API}/sports/${id}/players?season=${season}`))).then(items=>{const all=[];for(const item of items)if(item.status==='fulfilled')all.push(...(item.value.people||[]));return [...new Map(all.map(p=>[Number(p.id),p])).values()];});}return directoryCachePromise;}
 async function search(q){if(q.length<2){status.textContent='請至少輸入 2 個字元';input.focus();return}searchButton.disabled=true;searchButton.textContent='搜尋中…';status.textContent='搜尋 MLB / MiLB 球員中…';results.innerHTML='';try{
   let found=[];
   if(/^\d{5,7}$/.test(q)){try{const direct=await fetchJson(`${API}/people/${q}?hydrate=currentTeam`);found.push(...(direct.people||[]))}catch{}}
-  const variants=queryVariants(q);
-  const searches=await Promise.allSettled(variants.map(name=>fetchJson(`${API}/people/search?names=${encodeURIComponent(name)}`)));
+  const searches=await Promise.allSettled(queryVariants(q).map(name=>fetchJson(`${API}/people/search?names=${encodeURIComponent(name)}`)));
   for(const item of searches)if(item.status==='fulfilled')found.push(...(item.value.people||[]));
-  let uniqueRaw=[...new Map(found.map(p=>[Number(p.id),p])).values()];
-  let matches=uniqueRaw.filter(p=>nameMatches(p,q));
-  if(!matches.length&&!/^\d{5,7}$/.test(q)){
-    status.textContent='擴大搜尋 MLB / MiLB 各層級球員…';
-    const directory=await loadPlayerDirectory();
-    matches=directory.filter(p=>nameMatches(p,q));
-  }
+  let matches=[...new Map(found.map(p=>[Number(p.id),p])).values()].filter(p=>nameMatches(p,q));
+  if(!matches.length&&!/^\d{5,7}$/.test(q)){status.textContent='擴大搜尋 MLB / MiLB 各層級球員…';matches=(await loadPlayerDirectory()).filter(p=>nameMatches(p,q));}
   if(!matches.length)throw new Error('NO_RESULTS');
   const enriched=await Promise.all(matches.sort((a,b)=>relevance(a,q)-relevance(b,q)).slice(0,12).map(enrichPlayer));
   status.textContent=`找到 ${enriched.length} 位球員，請選擇正確的人`;
-  results.innerHTML=enriched.map(p=>{const duplicate=players().some(x=>Number(x.id)===Number(p.id));const team=p.currentTeam?.name||'MLB / MiLB';const pos=p.primaryPosition?.abbreviation||p.primaryPosition?.name||'—';return `<div class="search-player"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${p.fullName}</strong><span>${team} · ${pos} · MLB ID ${p.id}</span></div>${duplicate?'<span class="already">已追蹤</span>':`<a class="add-player" href="${issueUrl('add',p)}" target="_blank" rel="noopener">＋ 加入</a>`}</div>`}).join('');
-}catch(e){status.textContent=e.message==='NO_RESULTS'?'找不到符合的球員。可試英文姓名、不同空格/連字號，或直接輸入 MLB Player ID。':'MLB / MiLB 搜尋暫時失敗，請再試一次';console.error(e)}finally{searchButton.disabled=false;searchButton.textContent='搜尋'}}
+  results.innerHTML=enriched.map(p=>{const duplicate=players().some(x=>Number(x.id)===Number(p.id));const team=p.currentTeam?.name||'MLB / MiLB';const pos=p.primaryPosition?.abbreviation||p.primaryPosition?.name||'—';return `<div class="search-player"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${p.fullName}</strong><span>${team} · ${pos} · MLB ID ${p.id}</span></div>${duplicate?'<span class="already">已追蹤</span>':`<button class="add-player" type="button" data-add="${p.id}">＋ 加入</button>`}</div>`}).join('');
+  results.querySelectorAll('[data-add]').forEach(button=>button.addEventListener('click',()=>mutate('add',button.dataset.add)));
+}catch(e){status.textContent=e.message==='NO_RESULTS'?'找不到符合的球員。可試英文姓名、不同空格/連字號，或直接輸入 MLB Player ID。':(e.message||'MLB / MiLB 搜尋暫時失敗，請再試一次');console.error(e)}finally{searchButton.disabled=false;searchButton.textContent='搜尋'}}
 document.addEventListener('tracker:players-loaded',renderCurrent);
 })();
