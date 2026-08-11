@@ -2,7 +2,19 @@ import { readFile } from "node:fs/promises";
 
 export const TIME_ZONE = "Asia/Taipei";
 export const MLB_API = "https://statsapi.mlb.com/api/v1";
-export const players = JSON.parse(await readFile(new URL("../tracked-players.json", import.meta.url), "utf8"));
+const fallbackPlayers = JSON.parse(await readFile(new URL("../tracked-players.json", import.meta.url), "utf8"));
+export const players = fallbackPlayers;
+
+async function loadObservationPlayers(fetcher=fetch) {
+  const apiUrl=String(process.env.OBSERVATION_API_URL||'').replace(/\/$/,'');
+  if(!apiUrl) return fallbackPlayers;
+  const response=await fetcher(`${apiUrl}/players`,{headers:{Accept:'application/json'},cache:'no-store'});
+  if(!response.ok) throw new Error(`Observation API ${response.status}`);
+  const payload=await response.json();
+  const list=Array.isArray(payload)?payload:payload.players;
+  if(!Array.isArray(list)||!list.length) throw new Error('Observation API returned an invalid or empty player list');
+  return list;
+}
 
 const levels = [[1,"MLB"],[11,"AAA"],[12,"AA"],[13,"High-A"],[14,"Single-A"],[16,"Rookie"]];
 const number = value => Number(value || 0);
@@ -89,7 +101,8 @@ async function playerSnapshot(player, reportDate, gameDate, fetcher) {
   return { id:player.id, name:player.name, group:player.group, team, status, played:Boolean(game), gameDate:dateOnly(game?.date), level:game?.level || latest?.level || "—", gameStatus:currentGameStatus, performance:game ? performance(player.group, game.stat) : "Did not play", season:seasonLine(player.group, currentLevel.season), news:transaction ? `${dateOnly(transaction.date)} ${transaction.description || transaction.typeDesc}` : "No recent status change reported", insight:insight(player, game, currentLevel.season), latestGameDate:dateOnly(latest?.date) };
 }
 export async function collectSnapshot({date=taiwanDate(), gameDate=baseballDate(), fetcher=fetch} = {}) {
-  const results = await Promise.allSettled(players.map(player => playerSnapshot(player, date, gameDate, fetcher)));
+  const trackedPlayers=await loadObservationPlayers(fetcher);
+  const results = await Promise.allSettled(trackedPlayers.map(player => playerSnapshot(player, date, gameDate, fetcher)));
   const failures = results.filter(result => result.status === "rejected");
   if (failures.length) throw new Error(`Could not load ${failures.length} player(s): ${failures[0].reason.message}`);
   return {date, gameDate, generatedAt:new Date().toISOString(), players:results.map(result => result.value)};
