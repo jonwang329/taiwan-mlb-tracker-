@@ -46,12 +46,12 @@
       <div id="player-search-results" class="player-search-results"></div>
       <div class="watchlist-divider"><span>目前追蹤</span></div>
       <div id="watchlist-current" class="watchlist-current"></div>
-      <p class="watchlist-note">搜尋範圍包含 MLB / MiLB Stats API 球員資料。加入或移除會更新網站與 LINE 共用的 Cloudflare KV 觀察名單。</p>
+      <p class="watchlist-note">搜尋範圍包含 MLB / MiLB Stats API 球員資料。加入或移除會直接更新網站與 LINE 共用的 Cloudflare KV 觀察名單，不需要 GitHub 登入。</p>
     </section>
   </div>
 
   <script src="observation-config.js"></script>
   <script src="app.js"></script>
-  <script src="watchlist-manager.js"></script>
+  <script src="watchlist-manager.js?v=20260811-owner-direct"></script>
 </body>
 </html>
