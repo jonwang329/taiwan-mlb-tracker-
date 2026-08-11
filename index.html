@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#071d36">
   <title>台灣旅美球員追蹤</title>
-  <link rel="stylesheet" href="styles.css?v=20260811-2311">
+  <link rel="stylesheet" href="styles.css?v=20260811-2340">
 </head>
 <body>
   <header class="site-header">
@@ -40,18 +40,18 @@
 
   <div id="watchlist-modal" class="watchlist-modal" hidden>
     <section class="watchlist-sheet" role="dialog" aria-modal="true" aria-labelledby="watchlist-title">
-      <header><div><span>OBSERVATION LIST</span><h2 id="watchlist-title">管理觀察名單</h2><p>搜尋 MLB / MiLB 球員加入；目前名單可直接移除。</p></div><button id="watchlist-close" type="button" aria-label="關閉">×</button></header>
+      <header><div><span>OBSERVATION LIST</span><h2 id="watchlist-title">管理觀察名單</h2><p>只有 Owner 可以加入或移除；其他訪客只能查看。</p></div><button id="watchlist-close" type="button" aria-label="關閉">×</button></header>
       <form id="player-search-form" class="player-search-box" role="search"><span>⌕</span><input id="player-search" type="search" autocomplete="off" enterkeyhint="search" placeholder="輸入英文姓名，例如 Yu-Min Lin" aria-label="搜尋 MLB 或 MiLB 球員"><button id="player-search-button" type="submit">搜尋</button></form>
       <p id="watchlist-status" class="watchlist-status" aria-live="polite"></p>
       <div id="player-search-results" class="player-search-results"></div>
       <div class="watchlist-divider"><span>目前追蹤</span></div>
       <div id="watchlist-current" class="watchlist-current"></div>
-      <p class="watchlist-note">搜尋範圍包含 MLB / MiLB Stats API 球員資料。加入或移除會直接更新網站與 LINE 共用的 Cloudflare KV 觀察名單，不需要 GitHub 登入。</p>
+      <p class="watchlist-note">所有操作都留在 Taiwan MLB Tracker 網站內；GitHub 與 Cloudflare 僅在後台運作。</p>
     </section>
   </div>
 
-  <script src="observation-config.js?v=20260811-2311"></script>
-  <script src="app.js?v=20260811-2311"></script>
-  <script src="watchlist-manager.js?v=20260811-2311"></script>
+  <script src="observation-config.js?v=20260811-2340"></script>
+  <script src="app.js?v=20260811-2340"></script>
+  <script src="watchlist-manager.js?v=20260811-2340"></script>
 </body>
 </html>
