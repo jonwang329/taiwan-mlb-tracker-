@@ -1,3 +1,4 @@
+# Deployment trigger: 2026-08-11
 name: Deploy observation Worker
 
 on:
