@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "taiwan-mlb-watchlist",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-11",
+  "kv_namespaces": [
+    {
+      "binding": "WATCHLIST",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
+    }
+  ],
+  "secrets": {
+    "required": ["OWNER_PIN"]
+  },
+  "vars": {
+    "ALLOWED_ORIGIN": "REPLACE_WITH_TRACKER_ORIGIN"
+  }
+}
