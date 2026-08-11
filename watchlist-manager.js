@@ -1,4 +1,5 @@
 (()=>{
+const style=document.createElement('link');style.rel='stylesheet';style.href='watchlist.css';document.head.appendChild(style);
 const API='https://statsapi.mlb.com/api/v1';
 const REPO='jonwang329/taiwan-mlb-tracker-';
 const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_160,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
