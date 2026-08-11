@@ -36,16 +36,19 @@ test('watchlist automation accepts only owner-approved requests',async()=>{
   assert.match(yml,/issues: write/);
 });
 
-test('prospect search uses unhydrated MLB name search and supports player ID',async()=>{
+test('prospect search falls back across MLB and MiLB sport directories',async()=>{
   const manager=await read('watchlist-manager.js');
+  assert.match(manager,/SPORT_IDS=\[1,11,12,13,14,16\]/);
+  assert.match(manager,/sports\/\$\{id\}\/players\?season=/);
   assert.match(manager,/people\/search\?names=/);
   assert.match(manager,/people\/\$\{q\}\?hydrate=currentTeam/);
   assert.doesNotMatch(manager,/people\/search\?names=\$\{encodeURIComponent\(name\)\}&hydrate=/);
 });
 
-test('official MLB search resolves Lan-Hong Su prospect ID 837088',async()=>{
-  const response=await fetch('https://statsapi.mlb.com/api/v1/people/search?names=Lan-Hong%20Su',{headers:{Accept:'application/json'}});
-  assert.equal(response.ok,true,`MLB search returned ${response.status}`);
+test('official Single-A directory contains Lan-Hong Su prospect ID 837088',async()=>{
+  const season=new Date().getUTCFullYear();
+  const response=await fetch(`https://statsapi.mlb.com/api/v1/sports/14/players?season=${season}`,{headers:{Accept:'application/json'}});
+  assert.equal(response.ok,true,`MLB Single-A directory returned ${response.status}`);
   const data=await response.json();
-  assert.ok((data.people||[]).some(player=>Number(player.id)===837088),'Lan-Hong Su (837088) missing from MLB name search');
+  assert.ok((data.people||[]).some(player=>Number(player.id)===837088),'Lan-Hong Su (837088) missing from Single-A player directory');
 });
