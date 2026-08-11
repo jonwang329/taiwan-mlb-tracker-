@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Parse approved request
         id: request
         env:
@@ -28,13 +31,40 @@ jobs:
             echo "::error::Invalid watchlist request format"
             exit 1
           fi
-      - name: Validate MLB player and update Cloudflare KV
+      - name: Verify Cloudflare secrets
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CF_TOKEN" || { echo "::error::CLOUDFLARE_API_TOKEN is missing"; exit 1; }
+          test -n "$CF_ACCOUNT" || { echo "::error::CLOUDFLARE_ACCOUNT_ID is missing"; exit 1; }
+      - name: Install Wrangler
+        run: npm install --no-save wrangler@4
+      - name: Load current observation list
+        id: kv
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          namespace_id=$(npx wrangler kv namespace list --json | jq -r '.[] | select(.title=="taiwan-mlb-observation-list") | .id' | head -1)
+          test -n "$namespace_id" && test "$namespace_id" != "null" || { echo "::error::KV namespace taiwan-mlb-observation-list not found; deploy the observation Worker first"; exit 1; }
+          echo "namespace_id=$namespace_id" >> "$GITHUB_OUTPUT"
+          if ! npx wrangler kv key get --namespace-id "$namespace_id" players --text --remote > /tmp/players.json 2>/dev/null || [ ! -s /tmp/players.json ]; then
+            cp tracked-players.json /tmp/players.json
+          fi
+      - name: Validate MLB player and prepare updated list
         env:
           WATCHLIST_ACTION: ${{ steps.request.outputs.action }}
           PLAYER_ID: ${{ steps.request.outputs.player_id }}
-          OBSERVATION_API_URL: ${{ secrets.OBSERVATION_API_URL }}
-          OBSERVATION_ADMIN_TOKEN: ${{ secrets.OBSERVATION_ADMIN_TOKEN }}
+          WATCHLIST_INPUT: /tmp/players.json
+          WATCHLIST_OUTPUT: /tmp/players-updated.json
         run: node scripts/manage-watchlist.mjs
+      - name: Write updated list to Cloudflare KV
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NAMESPACE_ID: ${{ steps.kv.outputs.namespace_id }}
+        run: npx wrangler kv key put --namespace-id "$NAMESPACE_ID" players --path /tmp/players-updated.json --remote
       - name: Confirm and close request
         env:
           GH_TOKEN: ${{ github.token }}
