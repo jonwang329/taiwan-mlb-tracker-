@@ -40,13 +40,13 @@
 
   <div id="watchlist-modal" class="watchlist-modal" hidden>
     <section class="watchlist-sheet" role="dialog" aria-modal="true" aria-labelledby="watchlist-title">
-      <header><div><span>OBSERVATION LIST</span><h2 id="watchlist-title">管理觀察名單</h2><p>加入或移除後，網站與 LINE 會使用同一份名單。</p></div><button id="watchlist-close" type="button" aria-label="關閉">×</button></header>
-      <div class="player-search-box"><span>⌕</span><input id="player-search" type="search" autocomplete="off" placeholder="Search MLB player…" aria-label="搜尋 MLB 球員"></div>
+      <header><div><span>OBSERVATION LIST</span><h2 id="watchlist-title">管理觀察名單</h2><p>搜尋 MLB / MiLB 球員加入；目前名單可直接移除。</p></div><button id="watchlist-close" type="button" aria-label="關閉">×</button></header>
+      <form id="player-search-form" class="player-search-box" role="search"><span>⌕</span><input id="player-search" type="search" autocomplete="off" enterkeyhint="search" placeholder="輸入英文姓名，例如 Yu-Min Lin" aria-label="搜尋 MLB 或 MiLB 球員"><button id="player-search-button" type="submit">搜尋</button></form>
       <p id="watchlist-status" class="watchlist-status" aria-live="polite"></p>
       <div id="player-search-results" class="player-search-results"></div>
       <div class="watchlist-divider"><span>目前追蹤</span></div>
       <div id="watchlist-current" class="watchlist-current"></div>
-      <p class="watchlist-note">Add / Remove 會開啟 GitHub 確認頁；核准後由安全的 GitHub Action 更新共享名單，不會把任何 token 放在網站裡。</p>
+      <p class="watchlist-note">搜尋範圍包含 MLB / MiLB Stats API 球員資料。加入或移除會更新網站與未來通知共用的觀察名單。</p>
     </section>
   </div>
 
