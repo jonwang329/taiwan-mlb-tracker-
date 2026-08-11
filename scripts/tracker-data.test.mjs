@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectSnapshot, formatChanges, formatSummary, hasChanges, players } from "./tracker-data.mjs";
+import { collectSnapshot, formatChanges, formatSummary, hasChanges, players, statusLabel } from "./tracker-data.mjs";
 
 function response(body) {
   return { ok: true, json: async () => body };
@@ -19,9 +19,18 @@ test("daily summary contains every player and required reporting fields", async 
   const text = formatSummary(snapshot);
   assert.equal(snapshot.players.length, players.length);
   for (const player of players) assert.match(text, new RegExp(player.name));
-  for (const label of ["出賽：", "狀態：", "本場：", "球季：", "動態：", "觀察："]) assert.match(text, new RegExp(label));
+  for (const label of ["比賽：", "出賽：", "球員狀態：", "本場：", "球季：", "動態：", "觀察："]) assert.match(text, new RegExp(label));
+  assert.match(text, /午間最終日報/);
   assert.match(text, /比賽日：2026-08-09/);
   assert.ok(text.length <= 5000);
+});
+
+test("summary periods and MLB game states are explicit", () => {
+  const snapshot = { date: "2026-08-10", gameDate: "2026-08-09", players: [] };
+  assert.match(formatSummary(snapshot, "morning"), /早安速報/);
+  assert.equal(statusLabel({ abstractGameState: "Final", detailedState: "Final" }), "FINAL — Final");
+  assert.equal(statusLabel({ abstractGameState: "Live", detailedState: "In Progress" }), "LIVE / IN PROGRESS — In Progress");
+  assert.equal(statusLabel({ abstractGameState: "Preview", detailedState: "Scheduled" }), "NOT STARTED — Scheduled");
 });
 
 test("change mode skips a baseline and reports changed data", async () => {

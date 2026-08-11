@@ -10,7 +10,7 @@ const statePath = process.env.TRACKER_STATE_PATH || ".cache/line-tracker-state.j
 const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const destination = process.env.LINE_DESTINATION_ID || process.env.LINE_USER_ID;
 
-if (!['changes', 'summary'].includes(mode)) throw new Error("--mode must be changes or summary.");
+if (!["changes", "morning", "final", "summary"].includes(mode)) throw new Error("--mode must be changes, morning, or final.");
 if (!token) throw new Error("Configuration failed: LINE_CHANNEL_ACCESS_TOKEN is not set.");
 if (!destination) throw new Error("Configuration failed: set LINE_DESTINATION_ID (or legacy LINE_USER_ID).");
 if (!/^[UCR]/.test(destination)) throw new Error("Configuration failed: LINE destination must begin with U, C, or R.");
@@ -24,8 +24,9 @@ try { previous = JSON.parse(await readFile(statePath, "utf8")); } catch (error) 
 console.log("[data] Loading tracker data from MLB Stats API...");
 const current = await collectSnapshot();
 console.log(`[data] Tracker data loaded successfully: ${current.players.length} players; report date ${current.date}; game date ${current.gameDate}.`);
-const shouldSend = mode === "summary" || hasChanges(previous, current);
-const message = mode === "summary" ? formatSummary(current) : previous ? formatChanges(previous, current) : "";
+const summaryPeriod = mode === "morning" ? "morning" : "final";
+const shouldSend = mode !== "changes" || hasChanges(previous, current);
+const message = mode !== "changes" ? formatSummary(current, summaryPeriod) : previous ? formatChanges(previous, current) : "";
 if (message) console.log(`[message] LINE message generated successfully: ${message.length} characters.`);
 
 if (shouldSend) {
