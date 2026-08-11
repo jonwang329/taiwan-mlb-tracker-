@@ -32,26 +32,28 @@ test('dashboard and LINE use the same Cloudflare observation API with setup fall
   assert.match(lineData,/tracked-players\.json/);
 });
 
-test('watchlist automation accepts only owner requests and writes through protected API',async()=>{
+test('watchlist automation accepts only owner requests and writes Cloudflare KV directly',async()=>{
   const yml=await read('.github/workflows/watchlist-manager.yml');
   const manager=await read('scripts/manage-watchlist.mjs');
   assert.match(yml,/author_association == 'OWNER'/);
   assert.match(yml,/issues: write/);
   assert.match(yml,/contents: read/);
-  assert.match(yml,/OBSERVATION_ADMIN_TOKEN/);
+  assert.match(yml,/CLOUDFLARE_API_TOKEN/);
+  assert.match(yml,/CLOUDFLARE_ACCOUNT_ID/);
+  assert.match(yml,/wrangler kv key put/);
+  assert.doesNotMatch(yml,/kv namespace list --json/);
   assert.doesNotMatch(yml,/git push origin main/);
-  assert.match(manager,/Authorization:`Bearer \$\{adminToken\}`/);
-  assert.match(manager,/OBSERVATION_API_URL/);
+  assert.match(manager,/WATCHLIST_INPUT/);
+  assert.match(manager,/WATCHLIST_OUTPUT/);
 });
 
-test('Cloudflare Worker binds KV and protects mutations',async()=>{
+test('Cloudflare Worker is read-only while KV binding provides shared source of truth',async()=>{
   const worker=await read('cloudflare/observation-worker.js');
   const deploy=await read('.github/workflows/deploy-observation-worker.yml');
   assert.match(worker,/env\.OBSERVATION_LIST\.get/);
   assert.match(worker,/env\.OBSERVATION_LIST\.put/);
-  assert.match(worker,/Bearer \$\{env\.ADMIN_TOKEN\}/);
-  assert.match(worker,/request\.method === 'POST'/);
-  assert.match(worker,/request\.method === 'DELETE'/);
+  assert.match(worker,/request\.method !== 'GET'/);
+  assert.match(worker,/read only/);
   assert.match(deploy,/taiwan-mlb-observation-list/);
   assert.match(deploy,/binding = "OBSERVATION_LIST"/);
 });
