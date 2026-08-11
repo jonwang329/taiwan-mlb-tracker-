@@ -14,15 +14,25 @@ open.addEventListener('click',show);close.addEventListener('click',hide);modal.a
 let timer;
 input.addEventListener('input',()=>{clearTimeout(timer);const q=input.value.trim();results.innerHTML='';status.textContent=q.length&&q.length<2?'請至少輸入 2 個字元':'';if(q.length<2)return;timer=setTimeout(()=>search(q),450)});
 form.addEventListener('submit',e=>{e.preventDefault();clearTimeout(timer);search(input.value.trim())});
+const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[-_'’.]/g,' ').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+function queryVariants(q){const clean=normalize(q),parts=clean.split(' ').filter(Boolean),variants=new Set([q.trim(),clean]);if(parts.length>1){variants.add(parts.join('-'));variants.add([...parts].reverse().join(' '));}return [...variants].filter(Boolean);}
+async function fetchJson(url){const r=await fetch(url,{headers:{Accept:'application/json'}});if(!r.ok)throw Error(`MLB API ${r.status}`);return r.json();}
+async function enrichPlayer(p){try{const data=await fetchJson(`${API}/people/${p.id}?hydrate=currentTeam`);return data.people?.[0]||p}catch{return p}}
+function relevance(p,q){const name=normalize(p.fullName),needle=normalize(q);if(name===needle)return 0;if(name.startsWith(needle))return 1;if(name.includes(needle))return 2;const words=needle.split(' ').filter(Boolean);return words.every(w=>name.includes(w))?3:9;}
 async function search(q){if(q.length<2){status.textContent='請至少輸入 2 個字元';input.focus();return}searchButton.disabled=true;searchButton.textContent='搜尋中…';status.textContent='搜尋 MLB / MiLB 球員中…';results.innerHTML='';try{
-  const urls=[`${API}/sports/1/players?season=${new Date().getFullYear()}&hydrate=currentTeam,primaryPosition`,`${API}/people/search?names=${encodeURIComponent(q)}&hydrate=currentTeam,primaryPosition`];
-  const responses=await Promise.allSettled(urls.map(u=>fetch(u).then(r=>{if(!r.ok)throw Error(String(r.status));return r.json()})));
-  const all=[];for(const item of responses){if(item.status==='fulfilled')all.push(...(item.value.people||[]))}
-  const words=q.toLocaleLowerCase().split(/\s+/).filter(Boolean);const matches=all.filter(p=>{const name=(p.fullName||'').toLocaleLowerCase();return words.every(w=>name.includes(w))});
-  const unique=[...new Map(matches.map(p=>[Number(p.id),p])).values()].slice(0,12);
-  if(!unique.length)throw new Error('NO_RESULTS');
-  status.textContent=`找到 ${unique.length} 位球員，請選擇正確的人`;
-  results.innerHTML=unique.map(p=>{const duplicate=players().some(x=>Number(x.id)===Number(p.id));const team=p.currentTeam?.name||'MLB / MiLB';const pos=p.primaryPosition?.abbreviation||p.primaryPosition?.name||'—';return `<div class="search-player"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${p.fullName}</strong><span>${team} · ${pos}</span></div>${duplicate?'<span class="already">已追蹤</span>':`<a class="add-player" href="${issueUrl('add',p)}" target="_blank" rel="noopener">＋ 加入</a>`}</div>`}).join('');
-}catch(e){status.textContent=e.message==='NO_RESULTS'?'找不到符合的球員。請輸入英文姓名，例如 Yu-Min Lin。':'MLB / MiLB 搜尋暫時失敗，請再試一次';console.error(e)}finally{searchButton.disabled=false;searchButton.textContent='搜尋'}}
+  let found=[];
+  if(/^\d{5,7}$/.test(q)){try{const direct=await fetchJson(`${API}/people/${q}?hydrate=currentTeam`);found.push(...(direct.people||[]))}catch{}}
+  const variants=queryVariants(q);
+  const searches=await Promise.allSettled(variants.map(name=>fetchJson(`${API}/people/search?names=${encodeURIComponent(name)}`)));
+  for(const item of searches)if(item.status==='fulfilled')found.push(...(item.value.people||[]));
+  const uniqueRaw=[...new Map(found.map(p=>[Number(p.id),p])).values()];
+  if(!uniqueRaw.length)throw new Error('NO_RESULTS');
+  const enriched=await Promise.all(uniqueRaw.slice(0,20).map(enrichPlayer));
+  const needle=normalize(q),words=needle.split(' ').filter(Boolean);
+  const matches=enriched.filter(p=>{const name=normalize(p.fullName);return name===needle||words.every(w=>name.includes(w))}).sort((a,b)=>relevance(a,q)-relevance(b,q)).slice(0,12);
+  if(!matches.length)throw new Error('NO_RESULTS');
+  status.textContent=`找到 ${matches.length} 位球員，請選擇正確的人`;
+  results.innerHTML=matches.map(p=>{const duplicate=players().some(x=>Number(x.id)===Number(p.id));const team=p.currentTeam?.name||'MLB / MiLB';const pos=p.primaryPosition?.abbreviation||p.primaryPosition?.name||'—';return `<div class="search-player"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${p.fullName}</strong><span>${team} · ${pos} · MLB ID ${p.id}</span></div>${duplicate?'<span class="already">已追蹤</span>':`<a class="add-player" href="${issueUrl('add',p)}" target="_blank" rel="noopener">＋ 加入</a>`}</div>`}).join('');
+}catch(e){status.textContent=e.message==='NO_RESULTS'?'找不到符合的球員。可試英文姓名、不同空格/連字號，或直接輸入 MLB Player ID。':'MLB / MiLB 搜尋暫時失敗，請再試一次';console.error(e)}finally{searchButton.disabled=false;searchButton.textContent='搜尋'}}
 document.addEventListener('tracker:players-loaded',renderCurrent);
 })();
