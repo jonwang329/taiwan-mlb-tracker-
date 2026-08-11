@@ -13,7 +13,8 @@ test('Taiwan production cron schedule remains exact',async()=>{
 
 test('manual LINE tests are clearly labeled and share production sender',async()=>{
   const sender=await read('scripts/send-line-update.mjs');
-  assert.match(sender,/🧪 TEST — Taiwan MLB Tracker/);
+  const data=await read('scripts/shared-tracker-data.mjs');
+  assert.match(data,/🧪 TEST — Taiwan MLB Tracker/);
   assert.match(sender,/shared-tracker-data\.mjs/);
   assert.match(sender,/Manual test does not modify the production snapshot/);
 });
