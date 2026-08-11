@@ -2,11 +2,11 @@ name: LINE daily tracker updates
 
 on:
   schedule:
-    # GitHub cron is UTC. Taiwan (UTC+8): 07:00, 08:00, 09:00, 12:00.
-    - cron: "0 23 * * *"
-    - cron: "0 0 * * *"
-    - cron: "0 1 * * *"
-    - cron: "0 4 * * *"
+    # GitHub cron is UTC. Taiwan (UTC+8): 07:05, 08:05, 09:05, 12:05.
+    - cron: "5 23 * * *"
+    - cron: "5 0 * * *"
+    - cron: "5 1 * * *"
+    - cron: "5 4 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -71,9 +71,9 @@ jobs:
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             mode="$MANUAL_MODE"
             test_flag="--test"
-          elif [[ "$SCHEDULE" == "0 23 * * *" ]]; then
+          elif [[ "$SCHEDULE" == "5 23 * * *" ]]; then
             mode="morning"
-          elif [[ "$SCHEDULE" == "0 4 * * *" ]]; then
+          elif [[ "$SCHEDULE" == "5 4 * * *" ]]; then
             mode="final"
           else
             mode="changes"
