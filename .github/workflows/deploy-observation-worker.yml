@@ -57,15 +57,10 @@ jobs:
           id = "$namespace_id"
           EOF
           npx wrangler deploy --config wrangler.deploy.toml
-      - name: Discover workers.dev URL
+      - name: Set workers.dev URL
         id: worker
-        env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          subdomain=$(curl -fsS -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/subdomain" | jq -r '.result.subdomain')
-          test -n "$subdomain" && test "$subdomain" != "null" || { echo "::error::Could not determine workers.dev subdomain"; exit 1; }
-          url="https://taiwan-mlb-observation-list.${subdomain}.workers.dev"
+          url="https://taiwan-mlb-observation-list.jonwang329.workers.dev"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           curl -fsS "$url/health"
       - name: Configure dashboard and automation API URL
