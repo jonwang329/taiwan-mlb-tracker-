@@ -6,7 +6,7 @@ const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
 test('Taiwan production cron schedule remains exact',async()=>{
   const yml=await read('.github/workflows/line-daily-updates.yml');
-  for(const cron of ['0 23 * * *','0 0 * * *','0 1 * * *','0 4 * * *']) assert.match(yml,new RegExp(cron.replace(/\*/g,'\\*')));
+  for(const cron of ['5 23 * * *','5 0 * * *','5 1 * * *','5 4 * * *']) assert.match(yml,new RegExp(cron.replace(/\*/g,'\\*')));
   assert.match(yml,/workflow_dispatch:/);assert.match(yml,/--test/);
 });
 
