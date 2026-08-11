@@ -7,7 +7,22 @@ const twToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'
 const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const names=p=>{const a=p.name.split(' ');return {zh:a.shift(),en:a.join(' ')}};
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
-async function loadTrackedPlayers(){const r=await fetch(`tracked-players.json?v=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error('無法讀取觀察名單');players=await r.json();window.trackedPlayers=players;return players;}
+async function loadTrackedPlayers(){
+  const apiUrl=String(window.OBSERVATION_API_URL||'').replace(/\/$/,'');
+  let list;
+  if(apiUrl){
+    const r=await fetch(`${apiUrl}/players`,{cache:'no-store',headers:{Accept:'application/json'}});
+    if(!r.ok)throw new Error(`無法讀取 Cloudflare 觀察名單 (${r.status})`);
+    const payload=await r.json();
+    list=Array.isArray(payload)?payload:payload.players;
+    if(!Array.isArray(list)||!list.length)throw new Error('Cloudflare 觀察名單格式錯誤');
+  }else{
+    const r=await fetch(`tracked-players.json?v=${Date.now()}`,{cache:'no-store'});
+    if(!r.ok)throw new Error('無法讀取觀察名單');
+    list=await r.json();
+  }
+  players=list;window.trackedPlayers=players;return players;
+}
 function gamesSorted(games){const seen=new Set;return games.filter(g=>{const k=gameId(g);if(seen.has(k))return false;seen.add(k);return g.date}).sort((a,b)=>new Date(b.date)-new Date(a.date));}
 function initials(p){return names(p).en.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();}
 function image(p,large=false){return `<div class="photo ${large?'photo-large':''}"><img src="${photo(p.id)}" alt="${p.name} 球員照片" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span aria-hidden="true"><b>${initials(p)}</b><small>TAIWAN BASEBALL</small></span></div>`;}
