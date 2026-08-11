@@ -19,21 +19,41 @@ test('manual LINE tests are clearly labeled and share production sender',async()
   assert.match(sender,/Manual test does not modify the production snapshot/);
 });
 
-test('dashboard and LINE use the same tracked player source',async()=>{
+test('dashboard and LINE use the same Cloudflare observation API with setup fallback',async()=>{
   const app=await read('app.js');
   const lineData=await read('scripts/shared-tracker-data.mjs');
+  const lineWorkflow=await read('.github/workflows/line-daily-updates.yml');
+  assert.match(app,/OBSERVATION_API_URL/);
+  assert.match(app,/\/players/);
+  assert.match(lineData,/OBSERVATION_API_URL/);
+  assert.match(lineData,/\/players/);
+  assert.match(lineWorkflow,/OBSERVATION_API_URL/);
   assert.match(app,/tracked-players\.json/);
   assert.match(lineData,/tracked-players\.json/);
-  const players=JSON.parse(await read('tracked-players.json'));
-  assert.ok(players.length>0);
-  assert.equal(new Set(players.map(p=>p.id)).size,players.length);
 });
 
-test('watchlist automation accepts only owner-approved requests',async()=>{
+test('watchlist automation accepts only owner requests and writes through protected API',async()=>{
   const yml=await read('.github/workflows/watchlist-manager.yml');
+  const manager=await read('scripts/manage-watchlist.mjs');
   assert.match(yml,/author_association == 'OWNER'/);
-  assert.match(yml,/contents: write/);
   assert.match(yml,/issues: write/);
+  assert.match(yml,/contents: read/);
+  assert.match(yml,/OBSERVATION_ADMIN_TOKEN/);
+  assert.doesNotMatch(yml,/git push origin main/);
+  assert.match(manager,/Authorization:`Bearer \$\{adminToken\}`/);
+  assert.match(manager,/OBSERVATION_API_URL/);
+});
+
+test('Cloudflare Worker binds KV and protects mutations',async()=>{
+  const worker=await read('cloudflare/observation-worker.js');
+  const deploy=await read('.github/workflows/deploy-observation-worker.yml');
+  assert.match(worker,/env\.OBSERVATION_LIST\.get/);
+  assert.match(worker,/env\.OBSERVATION_LIST\.put/);
+  assert.match(worker,/Bearer \$\{env\.ADMIN_TOKEN\}/);
+  assert.match(worker,/request\.method === 'POST'/);
+  assert.match(worker,/request\.method === 'DELETE'/);
+  assert.match(deploy,/taiwan-mlb-observation-list/);
+  assert.match(deploy,/binding = "OBSERVATION_LIST"/);
 });
 
 test('prospect search falls back across MLB and MiLB sport directories',async()=>{
