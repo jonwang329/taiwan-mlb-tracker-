@@ -12,9 +12,9 @@ on:
       mode:
         description: Notification type
         required: true
-        default: summary
+        default: final
         type: choice
-        options: [summary, changes]
+        options: [morning, changes, final]
 
 permissions:
   contents: read
@@ -57,8 +57,10 @@ jobs:
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             mode="$MANUAL_MODE"
-          elif [[ "$SCHEDULE" == "0 23 * * *" || "$SCHEDULE" == "0 4 * * *" ]]; then
-            mode="summary"
+          elif [[ "$SCHEDULE" == "0 23 * * *" ]]; then
+            mode="morning"
+          elif [[ "$SCHEDULE" == "0 4 * * *" ]]; then
+            mode="final"
           else
             mode="changes"
           fi

@@ -44,6 +44,7 @@ async function levelData(player, [sportId, level], season, fetcher) {
     json(`${base}&stats=season`, fetcher), json(`${base}&stats=gameLog`, fetcher),
   ]);
   return {
+    sportId,
     level,
     season: seasonJson.stats?.[0]?.splits?.[0]?.stat || null,
     games: (logJson.stats?.[0]?.splits || []).map((split) => ({ ...split, level })),
@@ -78,13 +79,31 @@ function insight(player, game, season = {}) {
   return `本場結果之外，可搭配球季 OPS ${season.ops ?? "—"} 觀察整體進攻貢獻。`;
 }
 
+export function statusLabel(status = {}) {
+  const detail = status.detailedState || "Status unavailable";
+  const state = status.abstractGameState;
+  if (state === "Final" || /final|game over|completed early/i.test(detail)) return `FINAL — ${detail}`;
+  if (state === "Live" || /in progress|warmup|delay|suspend|review|challenge/i.test(detail)) return `LIVE / IN PROGRESS — ${detail}`;
+  if (state === "Preview" || /scheduled|pre-game|not started/i.test(detail)) return `NOT STARTED — ${detail}`;
+  return `STATUS UNKNOWN — ${detail}`;
+}
+
 async function gameStatus(game, fetcher) {
   const gamePk = game?.game?.gamePk || game?.gamePk;
-  if (!gamePk) return "Final / game log recorded";
+  if (!gamePk) return "FINAL — game log recorded";
   try {
     const data = await json(`${MLB_API}/schedule?gamePk=${gamePk}`, fetcher);
-    return data.dates?.[0]?.games?.[0]?.status?.detailedState || "Game recorded";
-  } catch { return "Game recorded"; }
+    return statusLabel(data.dates?.[0]?.games?.[0]?.status);
+  } catch { return "STATUS UNKNOWN — game recorded"; }
+}
+
+async function teamGameStatus(teamId, sportId, gameDate, fetcher) {
+  if (!teamId || !sportId) return "NO GAME — no scheduled game or appearance recorded";
+  try {
+    const data = await json(`${MLB_API}/schedule?teamId=${teamId}&sportId=${sportId}&date=${gameDate}`, fetcher);
+    const status = data.dates?.[0]?.games?.[0]?.status;
+    return status ? statusLabel(status) : "NO GAME — no scheduled game or appearance recorded";
+  } catch { return "STATUS UNKNOWN — schedule unavailable"; }
 }
 
 async function playerSnapshot(player, reportDate, gameDate, fetcher) {
@@ -103,10 +122,13 @@ async function playerSnapshot(player, reportDate, gameDate, fetcher) {
   const transaction = [...(person.transactions || [])].sort((a, b) => new Date(b.date) - new Date(a.date))[0];
   const status = person.rosterStatus?.description || person.rosterStatus || "Active status unavailable";
   const team = person.currentTeam?.name || player.org;
+  const currentGameStatus = game
+    ? await gameStatus(game, fetcher)
+    : await teamGameStatus(person.currentTeam?.id, currentLevel.sportId, gameDate, fetcher);
   return {
     id: player.id, name: player.name, group: player.group, team, status,
     played: Boolean(game), gameDate: dateOnly(game?.date), level: game?.level || latest?.level || "—",
-    gameStatus: await gameStatus(game, fetcher), performance: game ? performance(player.group, game.stat) : "Did not play",
+    gameStatus: currentGameStatus, performance: game ? performance(player.group, game.stat) : "Did not play",
     season: seasonLine(player.group, currentLevel.season),
     news: transaction ? `${dateOnly(transaction.date)} ${transaction.description || transaction.typeDesc}` : "No recent status change reported",
     insight: insight(player, game, currentLevel.season),
@@ -130,11 +152,13 @@ export function hasChanges(previous, current) {
   return Boolean(previous) && JSON.stringify(comparable(previous)) !== JSON.stringify(comparable(current));
 }
 
-export function formatSummary(snapshot) {
-  const header = `🇹🇼⚾ Taiwan MLB Tracker｜${snapshot.date} 午間完整日報\n比賽日：${snapshot.gameDate}（美國東岸）`;
+export function formatSummary(snapshot, period = "final") {
+  const title = period === "morning" ? "早安速報" : "午間最終日報";
+  const header = `🇹🇼⚾ Taiwan MLB Tracker｜${snapshot.date} ${title}\n比賽日：${snapshot.gameDate}（美國東岸）`;
   const sections = snapshot.players.map((player) => [
     `\n【${player.name}｜${player.team}】`,
-    `出賽：${player.played ? "有" : "無"}｜狀態：${player.played ? player.gameStatus : player.status}`,
+    `比賽：${player.gameStatus}`,
+    `出賽：${player.played ? "有" : "無"}｜球員狀態：${player.status}`,
     `本場：${player.performance}${player.played ? `（${player.level}）` : ""}`,
     `球季：${player.season}`,
     `動態：${player.news}`,
@@ -147,5 +171,5 @@ export function formatChanges(previous, current) {
   const before = new Map(previous.players.map((player) => [player.id, JSON.stringify(comparable({ players: [player] })[0])]));
   const changed = current.players.filter((player) => before.get(player.id) !== JSON.stringify(comparable({ players: [player] })[0]));
   return [`🇹🇼⚾ Taiwan MLB Tracker｜${current.date} 資料更新`, ...changed.map((player) =>
-    `\n【${player.name}】${player.played ? `\n${player.gameStatus}｜${player.performance}\n球季：${player.season}` : `\n${player.status}｜最新比賽 ${player.latestGameDate || "—"}`}\n動態：${player.news}\n觀察：${player.insight}`)].join("\n");
+    `\n【${player.name}】\n比賽：${player.gameStatus}${player.played ? `\n本場：${player.performance}\n球季：${player.season}` : `\n球員狀態：${player.status}｜最新比賽 ${player.latestGameDate || "—"}`}\n動態：${player.news}\n觀察：${player.insight}`)].join("\n");
 }
