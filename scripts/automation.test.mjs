@@ -19,21 +19,27 @@ test('manual LINE tests are clearly labeled and share production sender',async()
   assert.match(sender,/Manual test does not modify the production snapshot/);
 });
 
-test('dashboard and LINE use the same tracked player source',async()=>{
+test('dashboard and LINE can use the same server-side observation list',async()=>{
   const app=await read('app.js');
-  const lineData=await read('scripts/shared-tracker-data.mjs');
-  assert.match(app,/tracked-players\.json/);
-  assert.match(lineData,/tracked-players\.json/);
-  const players=JSON.parse(await read('tracked-players.json'));
-  assert.ok(players.length>0);
-  assert.equal(new Set(players.map(p=>p.id)).size,players.length);
+  const manager=await read('watchlist-manager.js');
+  const runner=await read('scripts/run-line-update.mjs');
+  const workflow=await read('.github/workflows/line-daily-updates.yml');
+  assert.match(app,/WATCHLIST_API_URL/);
+  assert.match(app,/\/watchlist/);
+  assert.match(manager,/WATCHLIST_API_URL/);
+  assert.doesNotMatch(manager,/github\.com\/.*issues\/new/);
+  assert.match(runner,/WATCHLIST_API_URL/);
+  assert.match(runner,/\/watchlist/);
+  assert.match(workflow,/vars\.WATCHLIST_API_URL/);
 });
 
-test('watchlist automation accepts only owner-approved requests',async()=>{
-  const yml=await read('.github/workflows/watchlist-manager.yml');
-  assert.match(yml,/author_association == 'OWNER'/);
-  assert.match(yml,/contents: write/);
-  assert.match(yml,/issues: write/);
+test('watchlist writes stay server-side and require owner authorization',async()=>{
+  const worker=await read('watchlist-api/src/index.js');
+  assert.match(worker,/X-Owner-Pin/);
+  assert.match(worker,/env\.OWNER_PIN/);
+  assert.match(worker,/env\.WATCHLIST\.put/);
+  assert.doesNotMatch(worker,/github/i);
+  assert.doesNotMatch(worker,/LINE_CHANNEL_ACCESS_TOKEN/);
 });
 
 test('prospect search falls back across MLB and MiLB sport directories',async()=>{
