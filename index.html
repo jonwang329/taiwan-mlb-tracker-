@@ -27,7 +27,7 @@
     </section>
 
     <section class="summary-section" aria-labelledby="summary-title">
-      <div class="section-title"><div><span>QUICK SCOREBOARD</span><h2 id="summary-title">球員即時總覽</h2></div><small id="last-update">讀取中…</small></div>
+      <div class="section-title"><div><span>QUICK SCOREBOARD</span><h2 id="summary-title">球員即時總覽</h2></div><div class="summary-tools"><small id="last-update">讀取中…</small><button id="manage-players-btn" class="manage-players" type="button">Manage <b>＋</b></button></div></div>
       <div id="player-summary" class="summary-list" aria-live="polite"></div>
     </section>
 
@@ -37,6 +37,20 @@
     </section>
   </main>
   <footer>資料來源：MLB / MiLB Stats API</footer>
+
+  <div id="watchlist-modal" class="watchlist-modal" hidden>
+    <section class="watchlist-sheet" role="dialog" aria-modal="true" aria-labelledby="watchlist-title">
+      <header><div><span>OBSERVATION LIST</span><h2 id="watchlist-title">管理觀察名單</h2><p>加入或移除後，網站與 LINE 會使用同一份名單。</p></div><button id="watchlist-close" type="button" aria-label="關閉">×</button></header>
+      <div class="player-search-box"><span>⌕</span><input id="player-search" type="search" autocomplete="off" placeholder="Search MLB player…" aria-label="搜尋 MLB 球員"></div>
+      <p id="watchlist-status" class="watchlist-status" aria-live="polite"></p>
+      <div id="player-search-results" class="player-search-results"></div>
+      <div class="watchlist-divider"><span>目前追蹤</span></div>
+      <div id="watchlist-current" class="watchlist-current"></div>
+      <p class="watchlist-note">Add / Remove 會開啟 GitHub 確認頁；核准後由安全的 GitHub Action 更新共享名單，不會把任何 token 放在網站裡。</p>
+    </section>
+  </div>
+
   <script src="app.js"></script>
+  <script src="watchlist-manager.js"></script>
 </body>
 </html>

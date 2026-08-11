@@ -2,7 +2,7 @@ name: LINE daily tracker updates
 
 on:
   schedule:
-    # GitHub cron is always UTC. 23:00 UTC is 07:00 Asia/Taipei on the following day.
+    # GitHub cron is UTC. Taiwan (UTC+8): 07:00, 08:00, 09:00, 12:00.
     - cron: "0 23 * * *"
     - cron: "0 0 * * *"
     - cron: "0 1 * * *"
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Notification type
+        description: Manual TEST report type
         required: true
         default: final
         type: choice
@@ -29,20 +29,23 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Log schedule and configuration preflight
+      - name: Log trigger and configuration
         env:
           EVENT_NAME: ${{ github.event_name }}
           SCHEDULE: ${{ github.event.schedule }}
           HAS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN != '' }}
           HAS_DESTINATION: ${{ secrets.LINE_DESTINATION_ID != '' || secrets.LINE_USER_ID != '' }}
         run: |
-          echo "Event: $EVENT_NAME; cron: ${SCHEDULE:-manual}"
+          echo "Trigger type: $([[ \"$EVENT_NAME\" == \"workflow_dispatch\" ]] && echo 'MANUAL TEST' || echo 'SCHEDULED PRODUCTION')"
+          echo "GitHub event: $EVENT_NAME"
+          echo "Cron: ${SCHEDULE:-none (manual)}"
           echo "Started UTC: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
           echo "Started Taiwan: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S %Z')"
           echo "LINE token configured: $HAS_TOKEN; destination configured: $HAS_DESTINATION"
           [[ "$HAS_TOKEN" == "true" ]] || { echo "::error::LINE_CHANNEL_ACCESS_TOKEN is not configured"; exit 1; }
           [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is not configured"; exit 1; }
       - name: Restore the last successful tracker snapshot
+        if: github.event_name != 'workflow_dispatch'
         uses: actions/cache/restore@v4
         with:
           path: .cache/line-tracker-state.json
@@ -55,8 +58,10 @@ jobs:
           SCHEDULE: ${{ github.event.schedule }}
           MANUAL_MODE: ${{ inputs.mode }}
         run: |
+          test_flag=""
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             mode="$MANUAL_MODE"
+            test_flag="--test"
           elif [[ "$SCHEDULE" == "0 23 * * *" ]]; then
             mode="morning"
           elif [[ "$SCHEDULE" == "0 4 * * *" ]]; then
@@ -65,14 +70,16 @@ jobs:
             mode="changes"
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "test_flag=$test_flag" >> "$GITHUB_OUTPUT"
+          echo "Resolved notification mode: $mode ${test_flag:+(TEST)}"
       - name: Fetch tracker data and notify LINE
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: node scripts/send-line-update.mjs --mode=${{ steps.notification.outputs.mode }}
+        run: node scripts/send-line-update.mjs --mode=${{ steps.notification.outputs.mode }} ${{ steps.notification.outputs.test_flag }}
       - name: Save tracker snapshot
-        if: success()
+        if: success() && github.event_name != 'workflow_dispatch'
         uses: actions/cache/save@v4
         with:
           path: .cache/line-tracker-state.json
