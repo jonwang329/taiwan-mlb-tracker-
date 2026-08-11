@@ -35,3 +35,17 @@ test('watchlist automation accepts only owner-approved requests',async()=>{
   assert.match(yml,/contents: write/);
   assert.match(yml,/issues: write/);
 });
+
+test('prospect search uses unhydrated MLB name search and supports player ID',async()=>{
+  const manager=await read('watchlist-manager.js');
+  assert.match(manager,/people\/search\?names=/);
+  assert.match(manager,/people\/\$\{q\}\?hydrate=currentTeam/);
+  assert.doesNotMatch(manager,/people\/search\?names=\$\{encodeURIComponent\(name\)\}&hydrate=/);
+});
+
+test('official MLB search resolves Lan-Hong Su prospect ID 837088',async()=>{
+  const response=await fetch('https://statsapi.mlb.com/api/v1/people/search?names=Lan-Hong%20Su',{headers:{Accept:'application/json'}});
+  assert.equal(response.ok,true,`MLB search returned ${response.status}`);
+  const data=await response.json();
+  assert.ok((data.people||[]).some(player=>Number(player.id)===837088),'Lan-Hong Su (837088) missing from MLB name search');
+});
