@@ -23,7 +23,8 @@ without storing credentials in the repository.
 2. In the channel's LINE Developers console, find your user ID. It begins with `U`
    and is different from your LINE display name or custom LINE ID.
 3. Add that value to the GitHub repository as an Actions secret named
-   `LINE_USER_ID`. Keep the existing `LINE_CHANNEL_ACCESS_TOKEN` secret.
+   `LINE_DESTINATION_ID` (the legacy `LINE_USER_ID` name remains supported). Keep
+   the existing `LINE_CHANNEL_ACCESS_TOKEN` secret.
 4. Open **Actions → Test LINE notification → Run workflow**.
 
 Both values are read only from GitHub Actions secrets. The workflow stops with a
@@ -45,7 +46,8 @@ The **LINE daily tracker updates** workflow connects the same tracked player lis
 to live MLB Stats API data. It runs every day at 07:00, 08:00, 09:00, and 12:00
 in `Asia/Taipei` (the workflow cron expressions are the corresponding UTC times).
 
-- The three morning checks compare a cached snapshot and send only when a game,
+- The 07:00 check always sends a complete summary. The 08:00 and 09:00 checks
+  compare a cached snapshot and send only when a game,
   season line, roster status, team, or transaction has changed. A first run saves
   a baseline without creating a false "update" notification.
 - The noon run always sends every player's playing status, game result and level,
@@ -56,6 +58,10 @@ in `Asia/Taipei` (the workflow cron expressions are the corresponding UTC times)
 - The snapshot is saved only after a successful data fetch and LINE operation, so
   a temporary API or delivery failure is retried rather than silently accepted.
 
-The workflow uses the existing `LINE_CHANNEL_ACCESS_TOKEN` and `LINE_USER_ID`
-Actions secrets; no credential is stored in the source. You can also run either
-mode manually from the Actions page.
+GitHub Actions cron is evaluated in UTC: `0 23 * * *` runs at 23:00 UTC, which is
+07:00 the following day in Taiwan (UTC+8). Scheduled jobs can start a few minutes
+late under GitHub Actions load. The workflow uses `LINE_CHANNEL_ACCESS_TOKEN` and
+`LINE_DESTINATION_ID` (or the legacy `LINE_USER_ID`) Actions secrets; no credential
+is stored or printed. Logs explicitly record data loading, message generation, the
+push attempt, HTTP status, and success/failure. You can run either mode manually
+from the Actions page with `workflow_dispatch`.
