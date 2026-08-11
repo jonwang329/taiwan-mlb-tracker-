@@ -34,10 +34,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          namespace_id=$(npx wrangler kv namespace list --json | jq -r '.[] | select(.title=="taiwan-mlb-observation-list") | .id' | head -1)
+          namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="taiwan-mlb-observation-list") | .id' | head -1)
           if [ -z "$namespace_id" ] || [ "$namespace_id" = "null" ]; then
             npx wrangler kv namespace create taiwan-mlb-observation-list
-            namespace_id=$(npx wrangler kv namespace list --json | jq -r '.[] | select(.title=="taiwan-mlb-observation-list") | .id' | head -1)
+            namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="taiwan-mlb-observation-list") | .id' | head -1)
           fi
           test -n "$namespace_id" && test "$namespace_id" != "null" || { echo "::error::Could not resolve KV namespace"; exit 1; }
 
