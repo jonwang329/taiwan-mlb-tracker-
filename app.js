@@ -1,5 +1,6 @@
 let players = [];
 const API='https://statsapi.mlb.com/api/v1';
+const WATCHLIST_API=String(window.WATCHLIST_API_URL||'').replace(/\/$/,'');
 const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新人聯盟']];
 const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_640,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 const val=(v,f='—')=>v??f, num=v=>Number(v||0), day=v=>String(v||'').slice(0,10);
@@ -7,7 +8,7 @@ const twToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'
 const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const names=p=>{const a=p.name.split(' ');return {zh:a.shift(),en:a.join(' ')}};
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
-async function loadTrackedPlayers(){const r=await fetch(`tracked-players.json?v=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error('無法讀取觀察名單');players=await r.json();window.trackedPlayers=players;return players;}
+async function loadTrackedPlayers(){let data;if(WATCHLIST_API){const r=await fetch(`${WATCHLIST_API}/watchlist`,{cache:'no-store',headers:{Accept:'application/json'}});if(!r.ok)throw new Error('無法讀取觀察名單');data=await r.json();players=Array.isArray(data)?data:(data.players||[]);}else{const r=await fetch(`tracked-players.json?v=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error('無法讀取觀察名單');players=await r.json();}window.trackedPlayers=players;return players;}
 function gamesSorted(games){const seen=new Set;return games.filter(g=>{const k=gameId(g);if(seen.has(k))return false;seen.add(k);return g.date}).sort((a,b)=>new Date(b.date)-new Date(a.date));}
 function initials(p){return names(p).en.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();}
 function image(p,large=false){return `<div class="photo ${large?'photo-large':''}"><img src="${photo(p.id)}" alt="${p.name} 球員照片" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span aria-hidden="true"><b>${initials(p)}</b><small>TAIWAN BASEBALL</small></span></div>`;}
@@ -30,6 +31,7 @@ async function fetchLevel(p,[sportId,level]){const base=`${API}/people/${p.id}/s
 async function load(p){const levels=await Promise.all(LEVELS.map(l=>fetchLevel(p,l))),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{};return {levels,games,latest,today:games.find(g=>day(g.date)===gameDay()),season:active.season||{}};}
 function updateMetrics(results){const played=results.map((r,i)=>[r,players[i]]).filter(([r])=>r.today),hits=played.reduce((a,[r,p])=>a+(p.group==='hitting'?num(r.today.stat?.hits):0),0),ks=played.reduce((a,[r,p])=>a+(p.group==='pitching'?num(r.today.stat?.strikeOuts):0),0),hot=played.filter(([r,p])=>p.group==='hitting'?num(r.today.stat?.hits)>1||num(r.today.stat?.homeRuns):num(r.today.stat?.strikeOuts)>=4);document.querySelector('#player-count').textContent=players.length;document.querySelector('#today-count').textContent=played.length;document.querySelector('#highlight-count').textContent=hot.length;document.querySelector('#daily-total').textContent=`${hits} / ${ks}`;}
 async function render(){const summary=document.querySelector('#player-summary'),details=document.querySelector('#player-details');summary.innerHTML='<div class="loading">正在讀取 MLB / MiLB 資料…</div>';const results=await Promise.all(players.map(load));summary.innerHTML=summaryGroup('hitting',results)+summaryGroup('pitching',results);details.innerHTML=players.map((p,i)=>detail(p,results[i])).join('');updateMetrics(results);wireImages();document.querySelector('#last-update').textContent=`更新 ${new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date())}`;document.dispatchEvent(new CustomEvent('tracker:players-loaded',{detail:players}));}
+window.reloadTrackedPlayers=async()=>{await loadTrackedPlayers();await render();};
 document.querySelector('#today-date').textContent=new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',weekday:'short'}).format(new Date());
-document.querySelector('#refresh-btn').addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await loadTrackedPlayers();await render()}finally{e.currentTarget.disabled=false}});
+document.querySelector('#refresh-btn').addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await window.reloadTrackedPlayers()}finally{e.currentTarget.disabled=false}});
 loadTrackedPlayers().then(render).catch(error=>{document.querySelector('#player-summary').innerHTML=`<div class="loading">${error.message}</div>`;console.error(error)});
