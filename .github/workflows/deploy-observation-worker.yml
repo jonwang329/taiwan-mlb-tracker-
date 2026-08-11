@@ -45,7 +45,7 @@ jobs:
             npx wrangler kv key put --namespace-id "$namespace_id" players --path tracked-players.json --remote
           fi
 
-          cat > /tmp/wrangler.toml <<EOF
+          cat > wrangler.deploy.toml <<EOF
           name = "taiwan-mlb-observation-list"
           main = "cloudflare/observation-worker.js"
           compatibility_date = "2026-08-11"
@@ -56,7 +56,7 @@ jobs:
           binding = "OBSERVATION_LIST"
           id = "$namespace_id"
           EOF
-          npx wrangler deploy --config /tmp/wrangler.toml
+          npx wrangler deploy --config wrangler.deploy.toml
       - name: Discover workers.dev URL
         id: worker
         env:
