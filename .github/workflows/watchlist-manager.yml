@@ -5,7 +5,7 @@ on:
     types: [opened]
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 jobs:
@@ -16,8 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
       - name: Parse approved request
         id: request
         env:
@@ -30,21 +28,13 @@ jobs:
             echo "::error::Invalid watchlist request format"
             exit 1
           fi
-      - name: Validate MLB player and update shared list
+      - name: Validate MLB player and update Cloudflare KV
         env:
           WATCHLIST_ACTION: ${{ steps.request.outputs.action }}
           PLAYER_ID: ${{ steps.request.outputs.player_id }}
+          OBSERVATION_API_URL: ${{ secrets.OBSERVATION_API_URL }}
+          OBSERVATION_ADMIN_TOKEN: ${{ secrets.OBSERVATION_ADMIN_TOKEN }}
         run: node scripts/manage-watchlist.mjs
-      - name: Commit shared observation list
-        env:
-          ACTION: ${{ steps.request.outputs.action }}
-          PLAYER_ID: ${{ steps.request.outputs.player_id }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tracked-players.json
-          git commit -m "${ACTION^} tracked MLB player ${PLAYER_ID}"
-          git push origin main
       - name: Confirm and close request
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,5 +42,5 @@ jobs:
           ACTION: ${{ steps.request.outputs.action }}
           PLAYER_ID: ${{ steps.request.outputs.player_id }}
         run: |
-          gh issue comment "$ISSUE" --body "✅ Observation list updated: **$ACTION** MLB player ID **$PLAYER_ID**. The dashboard and future LINE reports now read the same shared list."
+          gh issue comment "$ISSUE" --body "✅ Observation list updated in Cloudflare KV: **$ACTION** MLB player ID **$PLAYER_ID**. The dashboard and future LINE reports now read the same shared list."
           gh issue close "$ISSUE" --reason completed

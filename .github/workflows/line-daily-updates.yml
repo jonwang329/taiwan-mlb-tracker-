@@ -35,13 +35,14 @@ jobs:
           SCHEDULE: ${{ github.event.schedule }}
           HAS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN != '' }}
           HAS_DESTINATION: ${{ secrets.LINE_DESTINATION_ID != '' || secrets.LINE_USER_ID != '' }}
+          HAS_OBSERVATION_API: ${{ secrets.OBSERVATION_API_URL != '' }}
         run: |
           echo "Trigger type: $([[ \"$EVENT_NAME\" == \"workflow_dispatch\" ]] && echo 'MANUAL TEST' || echo 'SCHEDULED PRODUCTION')"
           echo "GitHub event: $EVENT_NAME"
           echo "Cron: ${SCHEDULE:-none (manual)}"
           echo "Started UTC: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
           echo "Started Taiwan: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S %Z')"
-          echo "LINE token configured: $HAS_TOKEN; destination configured: $HAS_DESTINATION"
+          echo "LINE token configured: $HAS_TOKEN; destination configured: $HAS_DESTINATION; observation API configured: $HAS_OBSERVATION_API"
           [[ "$HAS_TOKEN" == "true" ]] || { echo "::error::LINE_CHANNEL_ACCESS_TOKEN is not configured"; exit 1; }
           [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is not configured"; exit 1; }
       - name: Restore the last successful tracker snapshot
@@ -77,6 +78,7 @@ jobs:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          OBSERVATION_API_URL: ${{ secrets.OBSERVATION_API_URL }}
         run: node scripts/send-line-update.mjs --mode=${{ steps.notification.outputs.mode }} ${{ steps.notification.outputs.test_flag }}
       - name: Save tracker snapshot
         if: success() && github.event_name != 'workflow_dispatch'
