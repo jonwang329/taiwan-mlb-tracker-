@@ -9,10 +9,13 @@ let activeMlbRequests=0;
 const waitingMlbRequests=[];
 
 const num=v=>Number(v||0);
-const day=v=>String(v||'').slice(0,10);
-const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const dateInZone=(date,timeZone)=>new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
+const twToday=()=>dateInZone(new Date(),'Asia/Taipei');
+const scheduleWindow=()=>({start:dateInZone(new Date(Date.now()-24*60*60*1000),'America/New_York'),end:dateInZone(new Date(),'America/New_York')});
+const gameTaiwanDate=game=>game?.gameDate?dateInZone(new Date(game.gameDate),'Asia/Taipei'):'';
+const relevantTodayGame=game=>game?.status?.abstractGameState==='Live'||gameTaiwanDate(game)===twToday();
 
 async function acquireMlbSlot(){
   if(activeMlbRequests<MAX_MLB_REQUESTS){activeMlbRequests+=1;return;}
@@ -63,11 +66,11 @@ async function loadTrackedPlayers(){
 }
 function gamesSorted(games){
   const seen=new Set();
-  return games.filter(g=>{
-    const key=gameId(g);
+  return games.filter(game=>{
+    const key=gameId(game);
     if(seen.has(key))return false;
     seen.add(key);
-    return g.date;
+    return game.date;
   }).sort((a,b)=>new Date(b.date)-new Date(a.date));
 }
 function liveAppearance(player,stat={}){
@@ -89,27 +92,42 @@ async function fetchLevel(player,[sportId,level]){
     return {level,season:null,games:[],failed:true};
   }
 }
-async function fetchLiveToday(player,teamIds,level){
+async function fetchOfficialToday(player,teamIds,level){
   const ids=[...new Set(teamIds.filter(Boolean))].slice(0,4);
+  if(!ids.length)return null;
+  const {start,end}=scheduleWindow();
+  let scheduleChecks=0;
+  let relevantGames=0;
+  let boxscoreChecks=0;
+  let lastError;
+  const seenGames=new Set();
   for(const teamId of ids){
     try{
-      const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&date=${gameDay()}`);
-      const games=schedule.dates?.[0]?.games||[];
+      const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
+      scheduleChecks+=1;
+      const games=(schedule.dates||[]).flatMap(date=>date.games||[]).filter(game=>relevantTodayGame(game));
       const ordered=[...games].sort((a,b)=>{
-        const rank=g=>g.status?.abstractGameState==='Live'?0:g.status?.abstractGameState==='Final'?1:2;
-        return rank(a)-rank(b);
+        const rank=game=>game.status?.abstractGameState==='Live'?0:game.status?.abstractGameState==='Final'?1:2;
+        return rank(a)-rank(b)||new Date(b.gameDate||0)-new Date(a.gameDate||0);
       });
       for(const game of ordered){
-        if(!game.gamePk||game.status?.abstractGameState==='Preview')continue;
-        const box=await freshJson(`${API}/game/${game.gamePk}/boxscore`);
-        const key=`ID${player.id}`;
-        const boxPlayer=box.teams?.home?.players?.[key]||box.teams?.away?.players?.[key];
-        if(!boxPlayer)continue;
-        const stat=player.group==='pitching'?(boxPlayer.stats?.pitching||{}):(boxPlayer.stats?.batting||boxPlayer.stats?.hitting||{});
-        if(liveAppearance(player,stat))return {date:gameDay(),level,stat,game:{gamePk:game.gamePk},live:true};
+        if(!game.gamePk||game.status?.abstractGameState==='Preview'||seenGames.has(game.gamePk))continue;
+        seenGames.add(game.gamePk);
+        relevantGames+=1;
+        try{
+          const box=await freshJson(`${API}/game/${game.gamePk}/boxscore`);
+          boxscoreChecks+=1;
+          const key=`ID${player.id}`;
+          const boxPlayer=box.teams?.home?.players?.[key]||box.teams?.away?.players?.[key];
+          if(!boxPlayer)continue;
+          const stat=player.group==='pitching'?(boxPlayer.stats?.pitching||{}):(boxPlayer.stats?.batting||boxPlayer.stats?.hitting||{});
+          if(liveAppearance(player,stat))return {date:gameTaiwanDate(game)||twToday(),level,stat,game:{gamePk:game.gamePk},live:game.status?.abstractGameState==='Live'};
+        }catch(error){lastError=error;console.warn(`[snapshot] Official boxscore unavailable for ${player.name}: ${error.message}`);}
       }
-    }catch(error){console.warn(`[snapshot] Live boxscore unavailable for ${player.name}: ${error.message}`);}
+    }catch(error){lastError=error;console.warn(`[snapshot] Official schedule unavailable for ${player.name}: ${error.message}`);}
   }
+  if(scheduleChecks===0)throw lastError||new Error('MLB schedule API unavailable');
+  if(relevantGames>0&&boxscoreChecks===0&&lastError)throw lastError;
   return null;
 }
 async function loadPlayer(player){
@@ -117,11 +135,10 @@ async function loadPlayer(player){
   const games=gamesSorted(levels.flatMap(level=>level.games));
   const latest=games[0]||null;
   const active=levels.find(level=>level.level===latest?.level)||levels.find(level=>level.season)||{};
-  const loggedToday=games.find(game=>day(game.date)===gameDay())||null;
   const teamIds=[latest?.team?.id,...games.slice(0,5).map(game=>game.team?.id),person.currentTeam?.id];
-  const liveToday=await fetchLiveToday(player,teamIds,active.level||latest?.level||'—');
+  const officialToday=await fetchOfficialToday(player,teamIds,active.level||latest?.level||'—');
   const compactLevels=levels.map(({level,season})=>({level,season,games:[]}));
-  return {levels:compactLevels,games:games.slice(0,5),latest,today:liveToday||loggedToday,season:active.season||{}};
+  return {levels:compactLevels,games:games.slice(0,5),latest,today:officialToday,season:active.season||{}};
 }
 function meaningful(result){
   return Boolean(result?.today||result?.latest||result?.games?.length||result?.levels?.some(level=>level.season));
@@ -159,4 +176,4 @@ if(previous&&signature(previous)===signature(next)){
 }
 await mkdir(new URL('../data/',import.meta.url),{recursive:true});
 await writeFile(OUTPUT_URL,`window.CENTRAL_DASHBOARD_SNAPSHOT=${JSON.stringify(next)};\n`,'utf8');
-console.log(`[snapshot] Updated central snapshot for ${trackedPlayers.length} players.`);
+console.log(`[snapshot] Updated central snapshot for ${trackedPlayers.length} players from official MLB / MiLB data.`);
