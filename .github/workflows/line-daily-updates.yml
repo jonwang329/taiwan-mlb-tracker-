@@ -2,11 +2,13 @@ name: LINE daily tracker updates
 
 on:
   schedule:
-    # GitHub cron is UTC. Taiwan (UTC+8): 07:05, 08:05, 09:05, 12:05.
-    - cron: "5 23 * * *"
-    - cron: "5 0 * * *"
-    - cron: "5 1 * * *"
-    - cron: "5 4 * * *"
+    # GitHub cron is UTC. Each Taiwan update window gets retry opportunities
+    # at :05, :15, :25, and :35 so one dropped scheduled event does not lose the update.
+    # Taiwan (UTC+8): 07:05/15/25/35, 08:05/15/25/35, 09:05/15/25/35, 12:05/15/25/35.
+    - cron: "5,15,25,35 23 * * *"
+    - cron: "5,15,25,35 0 * * *"
+    - cron: "5,15,25,35 1 * * *"
+    - cron: "5,15,25,35 4 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -68,24 +70,30 @@ jobs:
           MANUAL_MODE: ${{ inputs.mode }}
         run: |
           test_flag=""
+          slot=""
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             mode="$MANUAL_MODE"
             test_flag="--test"
-          elif [[ "$SCHEDULE" == "5 23 * * *" ]]; then
-            mode="morning"
-          elif [[ "$SCHEDULE" == "5 4 * * *" ]]; then
-            mode="final"
           else
-            mode="changes"
+            hour=$(awk '{print $2}' <<< "$SCHEDULE")
+            case "$hour" in
+              23) mode="morning"; slot="07" ;;
+              0)  mode="changes"; slot="08" ;;
+              1)  mode="changes"; slot="09" ;;
+              4)  mode="final"; slot="12" ;;
+              *) echo "::error::Unexpected scheduled hour: $hour"; exit 1 ;;
+            esac
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "slot=$slot" >> "$GITHUB_OUTPUT"
           echo "test_flag=$test_flag" >> "$GITHUB_OUTPUT"
-          echo "Resolved notification mode: $mode ${test_flag:+(TEST)}"
+          echo "Resolved notification mode: $mode; slot: ${slot:-manual} ${test_flag:+(TEST)}"
       - name: Fetch tracker data and notify LINE
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          NOTIFICATION_SLOT: ${{ steps.notification.outputs.slot }}
         run: node scripts/send-line-update.mjs --mode=${{ steps.notification.outputs.mode }} ${{ steps.notification.outputs.test_flag }}
       - name: Save tracker snapshot
         if: success() && github.event_name != 'workflow_dispatch'
