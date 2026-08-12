@@ -11,6 +11,7 @@ const statePath = process.env.TRACKER_STATE_PATH || ".cache/line-tracker-state.j
 const slot = process.env.NOTIFICATION_SLOT || "";
 const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const destination = process.env.LINE_DESTINATION_ID || process.env.LINE_USER_ID;
+const taiwanDate = () => new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Taipei", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
 
 if (!["changes", "morning", "final", "summary"].includes(mode)) throw new Error("--mode must be changes, morning, or final.");
 if (!token) throw new Error("Configuration failed: LINE_CHANNEL_ACCESS_TOKEN is not set.");
@@ -21,6 +22,11 @@ console.log(`[config] Notification mode: ${mode}; slot: ${slot || "manual"}; tri
 let previous = null;
 try { previous = JSON.parse(await readFile(statePath, "utf8")); } catch (error) { if (error.code !== "ENOENT") throw error; }
 const deliveries = previous?._deliveries && typeof previous._deliveries === "object" ? previous._deliveries : {};
+const plannedDeliveryKey = !isTest && slot ? `${taiwanDate()}:${slot}` : "";
+if (plannedDeliveryKey && deliveries[plannedDeliveryKey]) {
+  console.log(`[line] Slot ${slot} was already delivered today; retry suppressed before MLB data fetch.`);
+  process.exit(0);
+}
 
 console.log("[data] Loading shared tracked-player list and MLB Stats API data...");
 const current = await collectSnapshot();
