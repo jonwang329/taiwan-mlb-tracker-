@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - 'cloudflare/observation-worker.js'
+      - 'cloudflare/line-worker.js'
       - '.github/workflows/deploy-observation-worker.yml'
       - 'tracked-players.json'
 
@@ -35,7 +36,7 @@ jobs:
           test -n "$LINE_DESTINATION" || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is missing"; exit 1; }
       - name: Install Wrangler
         run: npm install --no-save wrangler@4
-      - name: Resolve or create KV namespace and deploy Worker with LINE cron
+      - name: Resolve KV and deploy observation + LINE workers
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -51,9 +52,21 @@ jobs:
             npx wrangler kv key put --namespace-id "$namespace_id" players --path tracked-players.json --remote
           fi
 
-          cat > wrangler.deploy.toml <<EOF
+          cat > wrangler.observation.toml <<EOF
           name = "taiwan-mlb-observation-list"
           main = "cloudflare/observation-worker.js"
+          compatibility_date = "2026-08-12"
+          account_id = "$CLOUDFLARE_ACCOUNT_ID"
+          workers_dev = true
+
+          [[kv_namespaces]]
+          binding = "OBSERVATION_LIST"
+          id = "$namespace_id"
+          EOF
+
+          cat > wrangler.line.toml <<EOF
+          name = "taiwan-mlb-line-notifier"
+          main = "cloudflare/line-worker.js"
           compatibility_date = "2026-08-12"
           account_id = "$CLOUDFLARE_ACCOUNT_ID"
           workers_dev = true
@@ -65,8 +78,10 @@ jobs:
           [triggers]
           crons = ["0 23 * * *", "0 0 * * *", "0 1 * * *", "0 4 * * *"]
           EOF
-          npx wrangler deploy --config wrangler.deploy.toml
-      - name: Install LINE secrets in Cloudflare Worker
+
+          npx wrangler deploy --config wrangler.observation.toml
+          npx wrangler deploy --config wrangler.line.toml
+      - name: Install LINE secrets in notifier Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -74,51 +89,54 @@ jobs:
           LINE_DESTINATION: ${{ secrets.LINE_DESTINATION_ID || secrets.LINE_USER_ID }}
           DEPLOY_TEST_TOKEN: ${{ github.token }}
         run: |
-          printf '%s' "$LINE_TOKEN" | npx wrangler secret put LINE_CHANNEL_ACCESS_TOKEN --config wrangler.deploy.toml
-          printf '%s' "$LINE_DESTINATION" | npx wrangler secret put LINE_DESTINATION_ID --config wrangler.deploy.toml
-          printf '%s' "$DEPLOY_TEST_TOKEN" | npx wrangler secret put DEPLOY_TEST_TOKEN --config wrangler.deploy.toml
-      - name: Set workers.dev URL and verify health
-        id: worker
+          printf '%s' "$LINE_TOKEN" | npx wrangler secret put LINE_CHANNEL_ACCESS_TOKEN --config wrangler.line.toml
+          printf '%s' "$LINE_DESTINATION" | npx wrangler secret put LINE_DESTINATION_ID --config wrangler.line.toml
+          printf '%s' "$DEPLOY_TEST_TOKEN" | npx wrangler secret put DEPLOY_TEST_TOKEN --config wrangler.line.toml
+      - name: Verify Worker health
+        id: workers
         run: |
-          url="https://taiwan-mlb-observation-list.jonwang329.workers.dev"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
+          observation_url="https://taiwan-mlb-observation-list.jonwang329.workers.dev"
+          line_url="https://taiwan-mlb-line-notifier.jonwang329.workers.dev"
+          echo "observation_url=$observation_url" >> "$GITHUB_OUTPUT"
+          echo "line_url=$line_url" >> "$GITHUB_OUTPUT"
+
+          curl -fsS "$observation_url/health" | jq -e '.ok == true'
+
           health=""
           for attempt in $(seq 1 15); do
-            health=$(curl -fsS "$url/health" || true)
+            health=$(curl -fsS "$line_url/health" || true)
             if echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true' >/dev/null 2>&1; then
-              echo "Cloudflare Worker health ready on attempt $attempt"
+              echo "LINE Worker ready on attempt $attempt"
               echo "$health" | jq '{ok,lineScheduler,lineConfigured,cronTimezone}'
               exit 0
             fi
-            echo "Worker version/secrets not ready yet (attempt $attempt/15)"
             sleep 2
           done
-          echo "::error::Cloudflare Worker did not report LINE readiness after retries"
-          echo "$health" | jq '{ok,lineScheduler,lineConfigured,cronTimezone}' 2>/dev/null || true
+          echo "::error::LINE Worker did not report readiness"
+          echo "$health"
           exit 1
-      - name: Send Cloudflare to LINE deployment test
+      - name: Send real-data Cloudflare to LINE test
         env:
-          URL: ${{ steps.worker.outputs.url }}
+          URL: ${{ steps.workers.outputs.line_url }}
           DEPLOY_TEST_TOKEN: ${{ github.token }}
         run: |
           result=""
           for attempt in $(seq 1 5); do
-            if result=$(curl --fail-with-body --max-time 150 -sS -X POST "$URL/internal/line-test" -H "Authorization: Bearer $DEPLOY_TEST_TOKEN"); then
-              if echo "$result" | jq -e '.ok == true and .lineStatus == 200' >/dev/null 2>&1; then
-                echo "$result" | jq '{ok,lineStatus,date,players,active}'
-                echo "Cloudflare -> LINE test succeeded"
-                exit 0
-              fi
+            result=$(curl --max-time 150 -sS -X POST "$URL/internal/line-test" -H "Authorization: Bearer $DEPLOY_TEST_TOKEN" || true)
+            if echo "$result" | jq -e '.ok == true and .active > 0 and .lineStatus == 200' >/dev/null 2>&1; then
+              echo "$result" | jq '{ok,lineStatus,date,players,active}'
+              echo "Cloudflare -> MLB live data -> LINE test succeeded"
+              exit 0
             fi
-            echo "Cloudflare -> LINE test not ready (attempt $attempt/5)"
+            echo "Real-data test not ready (attempt $attempt/5)"
+            echo "$result" | jq '{ok,reason,error,date,players,active,diagnostics}' 2>/dev/null || true
             sleep 2
           done
-          echo "::error::Cloudflare -> LINE deployment test failed"
-          echo "$result" | jq '{ok,error,lineStatus,date,players,active}' 2>/dev/null || true
+          echo "::error::Cloudflare live-data LINE test failed or returned zero active players"
           exit 1
-      - name: Configure dashboard and automation API URL
+      - name: Configure dashboard API URL
         env:
-          URL: ${{ steps.worker.outputs.url }}
+          URL: ${{ steps.workers.outputs.observation_url }}
         run: |
           printf "// Generated by Deploy observation Worker.\nwindow.OBSERVATION_API_URL = '%s';\n" "$URL" > observation-config.js
           git config user.name "github-actions[bot]"
@@ -130,10 +148,10 @@ jobs:
             git commit -m "Configure deployed observation Worker URL"
             git push origin HEAD:main
           fi
-      - name: Verify shared list
+      - name: Verify shared list and schedules
         env:
-          URL: ${{ steps.worker.outputs.url }}
+          OBSERVATION_URL: ${{ steps.workers.outputs.observation_url }}
         run: |
-          curl -fsS "$URL/players" | jq -e '.players | length > 0'
-          echo "Observation API: $URL"
-          echo "LINE scheduler now runs in Cloudflare at 07:00, 08:00, 09:00, 12:00 Asia/Taipei"
+          curl -fsS "$OBSERVATION_URL/players" | jq -e '.players | length > 0'
+          echo "Observation API: $OBSERVATION_URL"
+          echo "LINE scheduler: dedicated Cloudflare notifier at 07:00, 08:00, 09:00, 12:00 Asia/Taipei"
