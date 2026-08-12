@@ -8,13 +8,11 @@ const API='https://statsapi.mlb.com/api/v1';
 const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新人聯盟']];
 const CACHE_KEY='taiwan-mlb-tracker:last-good:v2';
 const AUTO_RECHECK_MS=5*60*1000;
+const timeLogic=window.TaiwanGameTime;
+if(!timeLogic)throw new Error('Taiwan game-time helper is not loaded');
+const {taiwanDate:twToday,scheduleQueryWindow:scheduleWindow,gameTaiwanDate,isTaiwanTodayGame}=timeLogic;
 const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_640,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 const val=(v,f='—')=>v??f, num=v=>Number(v||0), day=v=>String(v||'').slice(0,10);
-const dateInZone=(date,timeZone)=>new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
-const twToday=()=>dateInZone(new Date(),'Asia/Taipei');
-const scheduleWindow=()=>({start:dateInZone(new Date(Date.now()-24*60*60*1000),'America/New_York'),end:dateInZone(new Date(),'America/New_York')});
-const gameTaiwanDate=g=>g?.gameDate?dateInZone(new Date(g.gameDate),'Asia/Taipei'):'';
-const relevantTodayGame=g=>g?.status?.abstractGameState==='Live'||gameTaiwanDate(g)===twToday();
 const formatTime=ts=>ts?new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(ts)):'—';
 const names=p=>{const a=p.name.split(' ');return {zh:a.shift(),en:a.join(' ')}};
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
@@ -62,7 +60,8 @@ async function fetchPerson(p){try{return (await freshJson(`${API}/people/${p.id}
 async function fetchOfficialToday(p,teamIds,level){
   const ids=[...new Set((Array.isArray(teamIds)?teamIds:[teamIds]).filter(Boolean))].slice(0,4);
   if(!ids.length)return null;
-  const {start,end}=scheduleWindow();
+  const now=new Date();
+  const {start,end}=scheduleWindow(now);
   let scheduleChecks=0;
   let relevantGames=0;
   let boxscoreChecks=0;
@@ -72,7 +71,7 @@ async function fetchOfficialToday(p,teamIds,level){
     try{
       const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
       scheduleChecks+=1;
-      const games=(schedule.dates||[]).flatMap(d=>d.games||[]).filter(g=>relevantTodayGame(g));
+      const games=(schedule.dates||[]).flatMap(d=>d.games||[]).filter(g=>isTaiwanTodayGame(g,now));
       const ordered=[...games].sort((a,b)=>{const rank=g=>g.status?.abstractGameState==='Live'?0:g.status?.abstractGameState==='Final'?1:2;return rank(a)-rank(b)||new Date(b.gameDate||0)-new Date(a.gameDate||0)});
       for(const g of ordered){
         if(!g.gamePk||g.status?.abstractGameState==='Preview'||seenGames.has(g.gamePk))continue;
@@ -84,7 +83,7 @@ async function fetchOfficialToday(p,teamIds,level){
           const key=`ID${p.id}`,bp=box.teams?.home?.players?.[key]||box.teams?.away?.players?.[key];
           if(!bp)continue;
           const stat=p.group==='pitching'?(bp.stats?.pitching||{}):(bp.stats?.batting||bp.stats?.hitting||{});
-          if(liveAppearance(p,stat))return {date:gameTaiwanDate(g)||twToday(),level,stat,game:{gamePk:g.gamePk},live:g.status?.abstractGameState==='Live'};
+          if(liveAppearance(p,stat))return {date:gameTaiwanDate(g),level,stat,game:{gamePk:g.gamePk},live:g.status?.abstractGameState==='Live'};
         }catch(error){lastError=error;console.warn('Official boxscore unavailable',p.name,g.gamePk,error)}
       }
     }catch(error){lastError=error;console.warn('Official schedule unavailable',p.name,teamId,error)}
@@ -126,9 +125,9 @@ async function refreshData({list=null,reason='manual'}={}){
     if(list)setTrackedPlayers(list);else await loadTrackedPlayers();
     const {results,failedCount}=await collectResults(),sig=snapshotSignature(results),now=Date.now();
     const changed=sig!==lastSignature||players.length!==lastPlayers.length;
-    persistSnapshot(results,now);
-    if(changed)paint(results,failedCount?`部分球員 API 暫時無法更新 · 已保留舊資料 · ${formatTime(now)}`:`MLB API 已更新 · ${formatTime(now)}`);
-    else lastUpdate.textContent=failedCount?`部分球員 API 暫時無法更新 · 舊資料保留 · ${formatTime(now)}`:`MLB API 已確認 · 無資料變更 · ${formatTime(now)}`;
+    persistSnapshot(results,failedCount?lastSuccessAt||now:now);
+    if(changed)paint(results,failedCount?`部分球員 API 暫時無法更新 · 已保留舊資料 · 檢查 ${formatTime(now)}`:`MLB API 已更新 · ${formatTime(now)}`);
+    else lastUpdate.textContent=failedCount?`部分球員 API 暫時無法更新 · 上次完整成功 ${formatTime(lastSuccessAt)}`:`MLB API 已確認 · 無資料變更 · ${formatTime(now)}`;
     return results;
   }catch(error){
     console.error(error);
