@@ -77,10 +77,10 @@ function hasBoxscoreAppearance(group, stat = {}, boxPlayer = {}) {
   if (group === "pitching") return number(stat.battersFaced) > 0 || number(stat.pitchesThrown) > 0 || number(stat.inningsPitched) > 0;
   return number(stat.plateAppearances) > 0 || number(stat.atBats) > 0 || number(stat.runs) > 0 || number(stat.baseOnBalls) > 0 || number(stat.hitByPitch) > 0 || number(stat.sacFlies) > 0 || number(stat.sacBunts) > 0 || Boolean(boxPlayer.allPositions?.length && boxPlayer.gameStatus?.isSubstitute);
 }
-async function teamGames(teamId, now, fetcher) {
+async function teamGames(teamId, sportId, now, fetcher) {
   if (!teamId) return [];
   const {start,end}=scheduleQueryWindow(now);
-  const data = await json(`${MLB_API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`, fetcher);
+  const data = await json(`${MLB_API}/schedule?sportId=${sportId||1}&teamId=${teamId}&startDate=${start}&endDate=${end}`, fetcher);
   return (data.dates || []).flatMap(item => item.games || []).filter(game => isTaiwanTodayGame(game, now));
 }
 async function officialBoxscoreAppearance(player, games, fetcher) {
@@ -123,7 +123,7 @@ async function playerSnapshot(player, reportDate, now, fetcher) {
   const team = latest?.team?.name || person.currentTeam?.name || player.org;
   const status = person.rosterStatus?.description || person.rosterStatus || (team ? `Rostered with ${team}` : "Roster status not provided by MLB");
   const candidateTeamIds = [...new Set([latest?.team?.id, ...games.slice(0,5).map(game => game.team?.id), person.currentTeam?.id].filter(Boolean))];
-  const scheduledBatches = await Promise.allSettled(candidateTeamIds.map(teamId => teamGames(teamId, now, fetcher)));
+  const scheduledBatches = await Promise.allSettled(candidateTeamIds.map(teamId => teamGames(teamId, currentLevel.sportId||1, now, fetcher)));
   const successfulSchedules=scheduledBatches.filter(result=>result.status==='fulfilled').flatMap(result=>result.value);
   if(candidateTeamIds.length&&scheduledBatches.every(result=>result.status==='rejected'))throw scheduledBatches[0].reason;
   const scheduledGames = [...new Map(successfulSchedules.filter(game => game?.gamePk).map(game => [game.gamePk, game])).values()];
