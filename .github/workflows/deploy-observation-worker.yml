@@ -43,7 +43,19 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
         run: |
+          # Optional friendly owner password. The plaintext secret never enters the repository
+          # or Cloudflare Worker source: only its SHA-256 is substituted in the ephemeral runner copy.
+          if [ -n "$OWNER_PASSWORD" ]; then
+            owner_hash=$(printf '%s' "$OWNER_PASSWORD" | sha256sum | awk '{print $1}')
+            sed -Ei "s/const OWNER_KEY_SHA256 = '[a-f0-9]{64}';/const OWNER_KEY_SHA256 = '$owner_hash';/" cloudflare/observation-worker.js
+            grep -Eq "const OWNER_KEY_SHA256 = '[a-f0-9]{64}';" cloudflare/observation-worker.js || { echo "::error::Could not install OWNER_PASSWORD hash"; exit 1; }
+            echo "Custom OWNER_PASSWORD hash installed for observation Worker"
+          else
+            echo "OWNER_PASSWORD not set; keeping legacy Owner Key temporarily"
+          fi
+
           namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="taiwan-mlb-observation-list") | .id' | head -1)
           if [ -z "$namespace_id" ] || [ "$namespace_id" = "null" ]; then
             npx wrangler kv namespace create taiwan-mlb-observation-list
