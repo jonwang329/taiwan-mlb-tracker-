@@ -4,11 +4,14 @@ import { readFile } from 'node:fs/promises';
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('Taiwan production cron schedule has retry windows',async()=>{
+test('Taiwan production LINE scheduler uses one resilient watchdog cron',async()=>{
   const yml=await read('.github/workflows/line-daily-updates.yml');
-  for(const cron of ['5,15,25,35,45,55 23 * * *','5,15,25,35,45,55 0 * * *','5,15,25,35,45,55 1 * * *','5,15,25,35,45,55 4 * * *']) assert.match(yml,new RegExp(cron.replace(/[,*]/g,m=>m==='*'?'\\*':m)));
-  assert.match(yml,/NOTIFICATION_SLOT/);assert.match(yml,/slot="07"/);assert.match(yml,/slot="08"/);assert.match(yml,/slot="09"/);assert.match(yml,/slot="12"/);
-  assert.match(yml,/workflow_dispatch:/);assert.match(yml,/--test/);
+  assert.match(yml,/7,17,27,37,47,57 \* \* \* \*/);
+  assert.match(yml,/timezone: "Asia\/Taipei"/);
+  assert.match(yml,/TZ=Asia\/Taipei date/);
+  assert.match(yml,/slot="07"/);assert.match(yml,/slot="08"/);assert.match(yml,/slot="09"/);assert.match(yml,/slot="12"/);
+  assert.match(yml,/active="false"/);assert.match(yml,/active="true"/);
+  assert.match(yml,/NOTIFICATION_SLOT/);assert.match(yml,/workflow_dispatch:/);assert.match(yml,/--test/);
 });
 
 test('LINE retries are deduplicated and no-change slots still notify',async()=>{
@@ -26,8 +29,8 @@ test('in-progress player data uses live boxscore instead of waiting for gameLog'
   assert.match(data,/candidateTeamIds/);
   assert.match(data,/latest\?\.team\?\.id/);
   assert.match(app,/fetchLiveToday/);
-  assert.match(app,/person\.currentTeam\?\.id/);
-  assert.doesNotMatch(app,/candidateTeamIds/);
+  assert.match(app,/teamIds=\[latest\?\.team\?\.id,person\.currentTeam\?\.id\]/);
+  assert.match(app,/slice\(0,2\)/);
   assert.match(app,/\/game\/\$\{g\.gamePk\}\/boxscore/);
   assert.match(app,/plateAppearances/);
   assert.match(app,/LIVE · 已出賽/);
