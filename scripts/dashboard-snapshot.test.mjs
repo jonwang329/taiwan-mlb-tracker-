@@ -30,6 +30,16 @@ test('website Refresh always requests live data immediately',async()=>{
   assert.doesNotMatch(app,/setInterval|setTimeout\([^)]*refreshData|lastRefresh|refreshCooldown/i);
 });
 
+test('browser and central snapshot keep overnight games in the same baseball day',async()=>{
+  const [app,builder,index]=await Promise.all([read('app.js'),read('scripts/build-dashboard-snapshot.mjs'),read('index.html')]);
+  for(const source of [app,builder]){
+    assert.match(source,/BASEBALL_DAY_CUTOFF_HOURS=6/);
+    assert.match(source,/Date\.now\(\)-BASEBALL_DAY_CUTOFF_HOURS\*60\*60\*1000/);
+    assert.match(source,/timeZone:'America\/New_York'/);
+  }
+  assert.match(index,/app\.js\?v=20260812-baseball-day/);
+});
+
 test('snapshot builder preserves complete last-known-good player data',async()=>{
   const builder=await read('scripts/build-dashboard-snapshot.mjs');
   assert.match(builder,/MAX_MLB_REQUESTS=8/);
