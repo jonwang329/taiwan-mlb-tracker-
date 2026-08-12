@@ -57,7 +57,7 @@ function summaryGroup(group,results){const hitters=group==='hitting',items=playe
 function detail(p,r){const n=names(p),today=Boolean(r.today);return `<article class="player-detail" id="player-${p.id}"><header>${image(p,true)}<div><span class="level">${currentLevel(r)}</span><h3>${n.zh}</h3><b>${n.en}</b><p>${p.org} · ${p.role}</p></div></header><div class="today-detail"><span>今日賽事</span><strong>${today?(r.today.live?'LIVE · 已出賽':'已出賽'):'今日未出賽'}</strong><p>${today?line(p,r.today):(p.group==='pitching'?'尚無下次登板資訊':'等待下一場比賽')}</p></div><section class="last-five"><div class="subhead"><h4>${p.group==='pitching'?'近 5 次登板':'近 5 場比賽'}</h4><span>LAST 5</span></div>${gameRows(p,r.games||[])}</section><section class="season-stats"><div class="subhead"><h4>本季成績</h4><span>SEASON</span></div>${metricGrid(p,r.season)}</section></article>`;}
 function liveAppearance(p,stat={}){return p.group==='pitching'?num(stat.battersFaced)>0||num(stat.pitchesThrown)>0||num(stat.inningsPitched)>0:num(stat.plateAppearances)>0||num(stat.atBats)>0||num(stat.runs)>0||num(stat.baseOnBalls)>0||num(stat.hitByPitch)>0||num(stat.sacFlies)>0||num(stat.sacBunts)>0;}
 async function fetchPerson(p){try{return (await freshJson(`${API}/people/${p.id}?hydrate=currentTeam`)).people?.[0]||{}}catch(error){console.warn('Player profile unavailable',p.name,error);return {}}}
-async function fetchOfficialToday(p,teamIds,level){
+async function fetchOfficialToday(p,teamIds,level,sportId){
   const ids=[...new Set((Array.isArray(teamIds)?teamIds:[teamIds]).filter(Boolean))].slice(0,4);
   if(!ids.length)return null;
   const now=new Date();
@@ -69,7 +69,7 @@ async function fetchOfficialToday(p,teamIds,level){
   const seenGames=new Set();
   for(const teamId of ids){
     try{
-      const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
+      const schedule=await freshJson(`${API}/schedule?sportId=${sportId||1}&teamId=${teamId}&startDate=${start}&endDate=${end}`);
       scheduleChecks+=1;
       const games=(schedule.dates||[]).flatMap(d=>d.games||[]).filter(g=>isTaiwanTodayGame(g,now));
       const ordered=[...games].sort((a,b)=>{const rank=g=>g.status?.abstractGameState==='Live'?0:g.status?.abstractGameState==='Final'?1:2;return rank(a)-rank(b)||new Date(b.gameDate||0)-new Date(a.gameDate||0)});
@@ -92,8 +92,8 @@ async function fetchOfficialToday(p,teamIds,level){
   if(relevantGames>0&&boxscoreChecks===0&&lastError)throw lastError;
   return null;
 }
-async function fetchLevel(p,[sportId,level]){const base=`${API}/people/${p.id}/stats?group=${p.group}&season=${new Date().getFullYear()}&sportId=${sportId}`;try{const [sj,gj]=await Promise.all([stableJson(`${base}&stats=season`),freshJson(`${base}&stats=gameLog`)]);return {level,season:sj.stats?.[0]?.splits?.[0]?.stat||null,games:(gj.stats?.[0]?.splits||[]).map(g=>({...g,level}))};}catch(error){console.warn('Stats unavailable',p.name,level,error);return {level,season:null,games:[],failed:true}}}
-async function load(p){const [levels,person]=await Promise.all([Promise.all(LEVELS.map(l=>fetchLevel(p,l))),fetchPerson(p)]),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{},teamIds=[latest?.team?.id,...games.slice(0,5).map(g=>g.team?.id),person.currentTeam?.id],officialToday=await fetchOfficialToday(p,teamIds,active.level||latest?.level||'—');return {levels,games,latest,today:officialToday,season:active.season||{}};}
+async function fetchLevel(p,[sportId,level]){const base=`${API}/people/${p.id}/stats?group=${p.group}&season=${new Date().getFullYear()}&sportId=${sportId}`;try{const [sj,gj]=await Promise.all([stableJson(`${base}&stats=season`),freshJson(`${base}&stats=gameLog`)]);return {sportId,level,season:sj.stats?.[0]?.splits?.[0]?.stat||null,games:(gj.stats?.[0]?.splits||[]).map(g=>({...g,level}))};}catch(error){console.warn('Stats unavailable',p.name,level,error);return {sportId,level,season:null,games:[],failed:true}}}
+async function load(p){const [levels,person]=await Promise.all([Promise.all(LEVELS.map(l=>fetchLevel(p,l))),fetchPerson(p)]),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{},teamIds=[latest?.team?.id,...games.slice(0,5).map(g=>g.team?.id),person.currentTeam?.id],officialToday=await fetchOfficialToday(p,teamIds,active.level||latest?.level||'—',active.sportId||1);return {levels,games,latest,today:officialToday,season:active.season||{}};}
 function meaningful(r){return Boolean(r?.today||r?.latest||r?.games?.length||r?.levels?.some(x=>x.season));}
 function updateMetrics(results){const played=results.map((r,i)=>[r,players[i]]).filter(([r])=>r.today),hits=played.reduce((a,[r,p])=>a+(p.group==='hitting'?num(r.today.stat?.hits):0),0),ks=played.reduce((a,[r,p])=>a+(p.group==='pitching'?num(r.today.stat?.strikeOuts):0),0),hot=played.filter(([r,p])=>p.group==='hitting'?num(r.today.stat?.hits)>1||num(r.today.stat?.homeRuns):num(r.today.stat?.strikeOuts)>=4);document.querySelector('#player-count').textContent=players.length;document.querySelector('#today-count').textContent=played.length;document.querySelector('#highlight-count').textContent=hot.length;document.querySelector('#daily-total').textContent=`${hits} / ${ks}`;}
 function snapshotSignature(results){return JSON.stringify({players:players.map(p=>[p.id,p.name,p.org,p.group]),results:results.map(r=>({today:r.today,latest:r.latest,season:r.season,games:(r.games||[]).slice(0,5)}))});}
