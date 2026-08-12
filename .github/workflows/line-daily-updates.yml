@@ -3,12 +3,13 @@ name: LINE daily tracker updates
 on:
   schedule:
     # GitHub cron is UTC. Each Taiwan update window gets retry opportunities
-    # at :05, :15, :25, and :35 so one dropped scheduled event does not lose the update.
-    # Taiwan (UTC+8): 07:05/15/25/35, 08:05/15/25/35, 09:05/15/25/35, 12:05/15/25/35.
-    - cron: "5,15,25,35 23 * * *"
-    - cron: "5,15,25,35 0 * * *"
-    - cron: "5,15,25,35 1 * * *"
-    - cron: "5,15,25,35 4 * * *"
+    # at :05, :15, :25, :35, :45, and :55 so a delayed/dropped scheduled event
+    # still has more chances inside the requested hour. Delivery is deduplicated by slot.
+    # Taiwan (UTC+8): 07/08/09/12 at :05/:15/:25/:35/:45/:55.
+    - cron: "5,15,25,35,45,55 23 * * *"
+    - cron: "5,15,25,35,45,55 0 * * *"
+    - cron: "5,15,25,35,45,55 1 * * *"
+    - cron: "5,15,25,35,45,55 4 * * *"
   workflow_dispatch:
     inputs:
       mode:

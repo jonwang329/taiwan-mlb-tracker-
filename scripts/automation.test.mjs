@@ -6,7 +6,7 @@ const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
 test('Taiwan production cron schedule has retry windows',async()=>{
   const yml=await read('.github/workflows/line-daily-updates.yml');
-  for(const cron of ['5,15,25,35 23 * * *','5,15,25,35 0 * * *','5,15,25,35 1 * * *','5,15,25,35 4 * * *']) assert.match(yml,new RegExp(cron.replace(/[,*]/g,m=>m==='*'?'\\*':m)));
+  for(const cron of ['5,15,25,35,45,55 23 * * *','5,15,25,35,45,55 0 * * *','5,15,25,35,45,55 1 * * *','5,15,25,35,45,55 4 * * *']) assert.match(yml,new RegExp(cron.replace(/[,*]/g,m=>m==='*'?'\\*':m)));
   assert.match(yml,/NOTIFICATION_SLOT/);assert.match(yml,/slot="07"/);assert.match(yml,/slot="08"/);assert.match(yml,/slot="09"/);assert.match(yml,/slot="12"/);
   assert.match(yml,/workflow_dispatch:/);assert.match(yml,/--test/);
 });
@@ -23,7 +23,11 @@ test('in-progress player data uses live boxscore instead of waiting for gameLog'
   assert.match(data,/liveBoxscoreAppearance/);
   assert.match(data,/cache:"no-store"/);
   assert.match(data,/liveSource/);
+  assert.match(data,/candidateTeamIds/);
+  assert.match(data,/latest\?\.team\?\.id/);
   assert.match(app,/fetchLiveToday/);
+  assert.match(app,/candidateTeamIds/);
+  assert.match(app,/latest\?\.team\?\.id/);
   assert.match(app,/\/game\/\$\{g\.gamePk\}\/boxscore/);
   assert.match(app,/plateAppearances/);
   assert.match(app,/LIVE · 已出賽/);
