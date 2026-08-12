@@ -130,25 +130,13 @@ jobs:
           echo "::error::LINE Worker did not report readiness"
           echo "$health"
           exit 1
-      - name: Send real-data Cloudflare to LINE test
+      - name: Verify LINE worker without sending a message
         env:
           URL: ${{ steps.workers.outputs.line_url }}
-          DEPLOY_TEST_TOKEN: ${{ github.token }}
         run: |
-          result=""
-          for attempt in $(seq 1 5); do
-            result=$(curl --max-time 150 -sS -X POST "$URL/internal/line-test" -H "Authorization: Bearer $DEPLOY_TEST_TOKEN" || true)
-            if echo "$result" | jq -e '.ok == true and .active > 0 and .lineStatus == 200' >/dev/null 2>&1; then
-              echo "$result" | jq '{ok,lineStatus,date,players,active}'
-              echo "Cloudflare -> MLB live data -> LINE test succeeded"
-              exit 0
-            fi
-            echo "Real-data test not ready (attempt $attempt/5)"
-            echo "$result" | jq '{ok,reason,error,date,players,active,diagnostics}' 2>/dev/null || true
-            sleep 2
-          done
-          echo "::error::Cloudflare live-data LINE test failed or returned zero active players"
-          exit 1
+          health=$(curl -fsS "$URL/health")
+          echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true'
+          echo "Cloudflare LINE worker health verified; no LINE test message sent during deployment"
       - name: Configure dashboard API URL
         env:
           URL: ${{ steps.workers.outputs.observation_url }}
