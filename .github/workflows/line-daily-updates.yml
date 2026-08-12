@@ -2,14 +2,11 @@ name: LINE daily tracker updates
 
 on:
   schedule:
-    # GitHub cron is UTC. Each Taiwan update window gets retry opportunities
-    # at :05, :15, :25, :35, :45, and :55 so a delayed/dropped scheduled event
-    # still has more chances inside the requested hour. Delivery is deduplicated by slot.
-    # Taiwan (UTC+8): 07/08/09/12 at :05/:15/:25/:35/:45/:55.
-    - cron: "5,15,25,35,45,55 23 * * *"
-    - cron: "5,15,25,35,45,55 0 * * *"
-    - cron: "5,15,25,35,45,55 1 * * *"
-    - cron: "5,15,25,35,45,55 4 * * *"
+    # One frequent scheduler is simpler and more resilient than four separate hourly crons.
+    # Run away from the top of the hour, where GitHub documents higher schedule load.
+    # Taiwan time is explicit to remove UTC conversion mistakes.
+    - cron: "7,17,27,37,47,57 * * * *"
+      timezone: "Asia/Taipei"
   workflow_dispatch:
     inputs:
       mode:
@@ -32,7 +29,38 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve Taiwan notification window
+        id: notification
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_MODE: ${{ inputs.mode }}
+        run: |
+          test_flag=""
+          slot=""
+          active="false"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            mode="$MANUAL_MODE"
+            test_flag="--test"
+            active="true"
+          else
+            hour=$(TZ=Asia/Taipei date '+%H')
+            case "$hour" in
+              07) mode="morning"; slot="07"; active="true" ;;
+              08) mode="changes"; slot="08"; active="true" ;;
+              09) mode="changes"; slot="09"; active="true" ;;
+              12) mode="final"; slot="12"; active="true" ;;
+              *)  mode="skip" ;;
+            esac
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "slot=$slot" >> "$GITHUB_OUTPUT"
+          echo "test_flag=$test_flag" >> "$GITHUB_OUTPUT"
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+          echo "Taiwan time: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S %Z'); mode=$mode; slot=${slot:-manual}; active=$active"
+
       - name: Load observation API URL
+        if: steps.notification.outputs.active == 'true'
         run: |
           api_url=$(sed -n "s/.*OBSERVATION_API_URL = '\(.*\)';.*/\1/p" observation-config.js | head -1)
           if [ -n "$api_url" ]; then
@@ -41,63 +69,36 @@ jobs:
           else
             echo "Observation API is not deployed yet; tracked-players.json fallback will be used"
           fi
-      - name: Log trigger and configuration
+
+      - name: Verify LINE configuration
+        if: steps.notification.outputs.active == 'true'
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          SCHEDULE: ${{ github.event.schedule }}
           HAS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN != '' }}
           HAS_DESTINATION: ${{ secrets.LINE_DESTINATION_ID != '' || secrets.LINE_USER_ID != '' }}
         run: |
-          echo "Trigger type: $([[ \"$EVENT_NAME\" == \"workflow_dispatch\" ]] && echo 'MANUAL TEST' || echo 'SCHEDULED PRODUCTION')"
-          echo "GitHub event: $EVENT_NAME"
-          echo "Cron: ${SCHEDULE:-none (manual)}"
-          echo "Started UTC: $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
-          echo "Started Taiwan: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S %Z')"
           echo "LINE token configured: $HAS_TOKEN; destination configured: $HAS_DESTINATION"
           [[ "$HAS_TOKEN" == "true" ]] || { echo "::error::LINE_CHANNEL_ACCESS_TOKEN is not configured"; exit 1; }
           [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is not configured"; exit 1; }
+
       - name: Restore the last successful tracker snapshot
-        if: github.event_name != 'workflow_dispatch'
+        if: steps.notification.outputs.active == 'true' && github.event_name != 'workflow_dispatch'
         uses: actions/cache/restore@v4
         with:
           path: .cache/line-tracker-state.json
           key: line-tracker-state-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: line-tracker-state-
-      - name: Choose notification type
-        id: notification
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          SCHEDULE: ${{ github.event.schedule }}
-          MANUAL_MODE: ${{ inputs.mode }}
-        run: |
-          test_flag=""
-          slot=""
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            mode="$MANUAL_MODE"
-            test_flag="--test"
-          else
-            hour=$(awk '{print $2}' <<< "$SCHEDULE")
-            case "$hour" in
-              23) mode="morning"; slot="07" ;;
-              0)  mode="changes"; slot="08" ;;
-              1)  mode="changes"; slot="09" ;;
-              4)  mode="final"; slot="12" ;;
-              *) echo "::error::Unexpected scheduled hour: $hour"; exit 1 ;;
-            esac
-          fi
-          echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "slot=$slot" >> "$GITHUB_OUTPUT"
-          echo "test_flag=$test_flag" >> "$GITHUB_OUTPUT"
-          echo "Resolved notification mode: $mode; slot: ${slot:-manual} ${test_flag:+(TEST)}"
+
       - name: Fetch tracker data and notify LINE
+        if: steps.notification.outputs.active == 'true'
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           NOTIFICATION_SLOT: ${{ steps.notification.outputs.slot }}
         run: node scripts/send-line-update.mjs --mode=${{ steps.notification.outputs.mode }} ${{ steps.notification.outputs.test_flag }}
+
       - name: Save tracker snapshot
-        if: success() && github.event_name != 'workflow_dispatch'
+        if: success() && steps.notification.outputs.active == 'true' && github.event_name != 'workflow_dispatch'
         uses: actions/cache/save@v4
         with:
           path: .cache/line-tracker-state.json
