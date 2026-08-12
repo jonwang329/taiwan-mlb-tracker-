@@ -43,16 +43,23 @@ test('in-progress and same-day player data stay fresh',async()=>{
   assert.match(app,/LIVE · 已出賽/);
 });
 
-test('desktop dashboard limits MLB request bursts and survives observation API failures',async()=>{
-  const app=await read('app.js');
-  assert.match(app,/MAX_MLB_REQUESTS=8/);
-  assert.match(app,/acquireMlbSlot/);
-  assert.match(app,/AbortController/);
-  assert.match(app,/fetchLevels/);
-  assert.match(app,/LEVELS\.slice\(i,i\+2\)/);
+test('dashboard bounds MLB requests and keeps last-good data on refresh failure',async()=>{
+  const app=await read('app.js');const guard=await read('mlb-fetch-guard.js');const html=await read('index.html');
+  assert.match(guard,/MAX_MLB_REQUESTS = 8/);
+  assert.match(guard,/acquireMlbSlot/);
+  assert.match(guard,/AbortController/);
+  assert.match(guard,/attempt < 2/);
+  assert.match(html,/mlb-fetch-guard\.js/);
+  assert.ok(html.indexOf('mlb-fetch-guard.js')<html.indexOf('app.js'),'fetch guard must load before app.js');
   assert.match(app,/Observation API unavailable; using repository fallback/);
   assert.match(app,/fallbackTrackedPlayers/);
+  assert.match(app,/CACHE_KEY='taiwan-mlb-tracker:last-good:v2'/);
+  assert.match(app,/restoreSnapshot/);
+  assert.match(app,/lastResults\.length/);
+  assert.match(app,/sig!==lastSignature/);
+  assert.match(app,/更新失敗 · 顯示上次成功資料/);
   assert.match(app,/window\.applyTrackedPlayers/);
+  assert.doesNotMatch(app,/summary\.innerHTML='<div class="loading">正在讀取 MLB \/ MiLB 資料…<\/div>';const results/);
 });
 
 test('manual LINE tests are clearly labeled and share production sender',async()=>{
