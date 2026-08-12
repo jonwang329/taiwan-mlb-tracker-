@@ -1,0 +1,1 @@
+window.CENTRAL_DASHBOARD_SNAPSHOT = null;
