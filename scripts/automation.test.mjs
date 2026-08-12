@@ -4,20 +4,24 @@ import { readFile } from 'node:fs/promises';
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('Cloudflare owns the four Taiwan production LINE schedules and GitHub is manual fallback only',async()=>{
-  const worker=await read('cloudflare/observation-worker.js');
+test('Cloudflare owns the four Taiwan production LINE slots with one Free-plan cron and GitHub is manual fallback only',async()=>{
+  const worker=await read('cloudflare/line-worker.js');
+  const wrapper=await read('cloudflare/line-worker-single-cron.js');
   const deploy=await read('.github/workflows/deploy-observation-worker.yml');
   const githubLine=await read('.github/workflows/line-daily-updates.yml');
   assert.doesNotMatch(githubLine,/\bschedule:/);
   assert.match(githubLine,/workflow_dispatch:/);
   assert.match(githubLine,/manual fallback/i);
   assert.match(deploy,/\[triggers\]/);
-  assert.match(deploy,/crons = \["0 23 \* \* \*", "0 0 \* \* \*", "0 1 \* \* \*", "0 4 \* \* \*"\]/);
-  assert.match(worker,/async scheduled\(controller,env,ctx\)/);
-  assert.match(worker,/\['0 23 \* \* \*', \{slot:'07', mode:'morning'\}\]/);
-  assert.match(worker,/\['0 0 \* \* \*', \{slot:'08', mode:'changes'\}\]/);
-  assert.match(worker,/\['0 1 \* \* \*', \{slot:'09', mode:'changes'\}\]/);
-  assert.match(worker,/\['0 4 \* \* \*', \{slot:'12', mode:'final'\}\]/);
+  assert.match(deploy,/crons = \["0 0,1,4,23 \* \* \*"\]/);
+  assert.match(deploy,/main = "cloudflare\/line-worker-single-cron\.js"/);
+  assert.match(wrapper,/\['07', '0 23 \* \* \*'\]/);
+  assert.match(wrapper,/\['08', '0 0 \* \* \*'\]/);
+  assert.match(wrapper,/\['09', '0 1 \* \* \*'\]/);
+  assert.match(wrapper,/\['12', '0 4 \* \* \*'\]/);
+  assert.match(wrapper,/Asia\/Taipei/);
+  assert.match(wrapper,/handler\.scheduled/);
+  assert.match(worker,/async scheduled\(controller, env, ctx\)/);
   assert.match(worker,/api\.line\.me\/v2\/bot\/message\/push/);
   assert.match(deploy,/secret put LINE_CHANNEL_ACCESS_TOKEN/);
   assert.match(deploy,/secret put LINE_DESTINATION_ID/);
