@@ -19,9 +19,12 @@ jobs:
       - name: JavaScript syntax checks
         run: |
           node --check app.js
+          node --check snapshot-bootstrap.js
+          node --check mlb-fetch-guard.js
           node --check watchlist-manager.js
+          node --check scripts/build-dashboard-snapshot.mjs
           node --check scripts/send-line-update.mjs
           node --check scripts/shared-tracker-data.mjs
           node --check scripts/manage-watchlist.mjs
       - name: Automation tests
-        run: node --test scripts/automation.test.mjs
+        run: node --test scripts/automation.test.mjs scripts/dashboard-snapshot.test.mjs
