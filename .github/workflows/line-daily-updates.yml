@@ -1,22 +1,10 @@
-name: LINE daily tracker updates
+name: LINE manual fallback (GitHub)
 
 on:
-  schedule:
-    # Multiple opportunities inside each Taiwan-time window. The sender de-duplicates
-    # successful deliveries, so delayed or dropped GitHub schedule events do not
-    # turn a single missed trigger into a missed notification.
-    - cron: "7,17,27,37,47,57 7 * * *"
-      timezone: "Asia/Taipei"
-    - cron: "7,17,27,37,47,57 8 * * *"
-      timezone: "Asia/Taipei"
-    - cron: "7,17,27,37,47,57 9 * * *"
-      timezone: "Asia/Taipei"
-    - cron: "7,17,27,37,47,57 12 * * *"
-      timezone: "Asia/Taipei"
   workflow_dispatch:
     inputs:
       mode:
-        description: Manual TEST report type
+        description: Manual fallback report type
         required: true
         default: final
         type: choice
@@ -26,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: line-daily-tracker
+  group: line-manual-fallback
   cancel-in-progress: false
 
 jobs:
@@ -36,37 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve Taiwan notification window
-        id: notification
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_SCHEDULE: ${{ github.event.schedule }}
-          MANUAL_MODE: ${{ inputs.mode }}
-        run: |
-          test_flag=""
-          slot=""
-          active="false"
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            mode="$MANUAL_MODE"
-            test_flag="--test"
-            active="true"
-          else
-            case "$EVENT_SCHEDULE" in
-              "7,17,27,37,47,57 7 * * *")  mode="morning"; slot="07"; active="true" ;;
-              "7,17,27,37,47,57 8 * * *")  mode="changes"; slot="08"; active="true" ;;
-              "7,17,27,37,47,57 9 * * *")  mode="changes"; slot="09"; active="true" ;;
-              "7,17,27,37,47,57 12 * * *") mode="final"; slot="12"; active="true" ;;
-              *)                                mode="skip" ;;
-            esac
-          fi
-          echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "slot=$slot" >> "$GITHUB_OUTPUT"
-          echo "test_flag=$test_flag" >> "$GITHUB_OUTPUT"
-          echo "active=$active" >> "$GITHUB_OUTPUT"
-          echo "Taiwan time: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S %Z'); schedule=${EVENT_SCHEDULE:-manual}; mode=$mode; slot=${slot:-manual}; active=$active"
-
       - name: Load observation API URL
-        if: steps.notification.outputs.active == 'true'
         run: |
           api_url=$(sed -n "s/.*OBSERVATION_API_URL = '\(.*\)';.*/\1/p" observation-config.js | head -1)
           if [ -n "$api_url" ]; then
@@ -77,7 +35,6 @@ jobs:
           fi
 
       - name: Verify LINE configuration
-        if: steps.notification.outputs.active == 'true'
         env:
           HAS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN != '' }}
           HAS_DESTINATION: ${{ secrets.LINE_DESTINATION_ID != '' || secrets.LINE_USER_ID != '' }}
@@ -86,26 +43,9 @@ jobs:
           [[ "$HAS_TOKEN" == "true" ]] || { echo "::error::LINE_CHANNEL_ACCESS_TOKEN is not configured"; exit 1; }
           [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is not configured"; exit 1; }
 
-      - name: Restore the last successful tracker snapshot
-        if: steps.notification.outputs.active == 'true'
-        uses: actions/cache/restore@v4
-        with:
-          path: .cache/line-tracker-state.json
-          key: line-tracker-state-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: line-tracker-state-
-
-      - name: Fetch tracker data and notify LINE
-        if: steps.notification.outputs.active == 'true'
+      - name: Run manual GitHub fallback sender
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-          NOTIFICATION_SLOT: ${{ steps.notification.outputs.slot }}
-        run: node scripts/send-line-update.mjs --mode=${{ steps.notification.outputs.mode }} ${{ steps.notification.outputs.test_flag }}
-
-      - name: Save tracker snapshot
-        if: success() && steps.notification.outputs.active == 'true' && github.event_name != 'workflow_dispatch'
-        uses: actions/cache/save@v4
-        with:
-          path: .cache/line-tracker-state.json
-          key: line-tracker-state-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node scripts/send-line-update.mjs --mode=${{ inputs.mode }} --test
