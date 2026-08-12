@@ -87,7 +87,7 @@ jobs:
           [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is not configured"; exit 1; }
 
       - name: Restore the last successful tracker snapshot
-        if: steps.notification.outputs.active == 'true' && github.event_name != 'workflow_dispatch'
+        if: steps.notification.outputs.active == 'true'
         uses: actions/cache/restore@v4
         with:
           path: .cache/line-tracker-state.json
