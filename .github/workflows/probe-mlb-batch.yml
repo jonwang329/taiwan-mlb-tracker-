@@ -1,0 +1,37 @@
+name: Probe official MLB batch endpoints
+
+on:
+  push:
+    branches: [agent/cloudflare-line-worker]
+    paths:
+      - '.github/workflows/probe-mlb-batch.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe official MLB batch parameters
+        run: |
+          node <<'NODE'
+          const base='https://statsapi.mlb.com/api/v1';
+          const ids='829473,701678';
+          async function get(url){
+            const r=await fetch(url,{headers:{Accept:'application/json'}});
+            const text=await r.text();
+            console.log(`STATUS ${r.status} ${url}`);
+            if(!r.ok){ console.log(text.slice(0,500)); return null; }
+            try{return JSON.parse(text);}catch{return null;}
+          }
+          const people=await get(`${base}/people?personIds=${ids}&hydrate=currentTeam`);
+          console.log('PEOPLE', JSON.stringify((people?.people||[]).map(p=>({id:p.id,name:p.fullName,currentTeam:p.currentTeam})),null,2));
+          const huang=(people?.people||[]).find(p=>p.id===829473);
+          const teamId=huang?.currentTeam?.id;
+          if(!teamId) throw new Error('Huang currentTeam missing');
+          const schedule=await get(`${base}/schedule?teamId=${teamId}&sportId=1,11,12,13,14,16&startDate=2026-08-11&endDate=2026-08-12`);
+          console.log('SCHEDULE_GAMES', (schedule?.dates||[]).flatMap(d=>d.games||[]).map(g=>({gamePk:g.gamePk,gameDate:g.gameDate,status:g.status,teams:g.teams})).slice(0,5));
+          const season=await get(`${base}/people/829473/stats?stats=season&group=pitching&sportIds=1,11,12,13,14,16&season=2026`);
+          console.log('SEASON_SPLITS', (season?.stats||[]).flatMap(s=>s.splits||[]).map(s=>({sport:s.sport,team:s.team,stat:s.stat})).slice(0,10));
+          NODE
