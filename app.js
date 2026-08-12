@@ -1,29 +1,39 @@
 let players = [];
 const API='https://statsapi.mlb.com/api/v1';
 const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新人聯盟']];
+const MAX_MLB_REQUESTS=8;
+let activeMlbRequests=0;
+const waitingMlbRequests=[];
 const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_640,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 const val=(v,f='—')=>v??f, num=v=>Number(v||0), day=v=>String(v||'').slice(0,10);
 const twToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const names=p=>{const a=p.name.split(' ');return {zh:a.shift(),en:a.join(' ')}};
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
-async function stableJson(url){const r=await fetch(url,{headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`MLB API ${r.status}`);return r.json();}
-async function freshJson(url){const sep=url.includes('?')?'&':'?';const r=await fetch(`${url}${sep}_=${Date.now()}`,{cache:'no-store',headers:{Accept:'application/json','Cache-Control':'no-cache'}});if(!r.ok)throw new Error(`MLB API ${r.status}`);return r.json();}
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function acquireMlbSlot(){if(activeMlbRequests<MAX_MLB_REQUESTS){activeMlbRequests+=1;return}await new Promise(resolve=>waitingMlbRequests.push(resolve));activeMlbRequests+=1;}
+function releaseMlbSlot(){activeMlbRequests=Math.max(0,activeMlbRequests-1);waitingMlbRequests.shift()?.();}
+async function mlbFetch(url,options={}){let lastError;for(let attempt=0;attempt<2;attempt+=1){await acquireMlbSlot();const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);try{const r=await fetch(url,{...options,signal:controller.signal});if(r.ok)return r;lastError=new Error(`MLB API ${r.status}`);if(r.status!==429&&r.status<500)throw lastError;}catch(error){lastError=error}finally{clearTimeout(timer);releaseMlbSlot()}if(attempt===0)await pause(300)}throw lastError||new Error('MLB API request failed');}
+async function stableJson(url){return (await mlbFetch(url,{headers:{Accept:'application/json'}})).json();}
+async function freshJson(url){const sep=url.includes('?')?'&':'?';return (await mlbFetch(`${url}${sep}_=${Date.now()}`,{cache:'no-store',headers:{Accept:'application/json','Cache-Control':'no-cache'}})).json();}
+async function fallbackTrackedPlayers(){const r=await fetch(`tracked-players.json?v=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error('無法讀取觀察名單');const list=await r.json();if(!Array.isArray(list)||!list.length)throw new Error('觀察名單格式錯誤');return list;}
+function setTrackedPlayers(list){players=list;window.trackedPlayers=players;return players;}
 async function loadTrackedPlayers(){
   const apiUrl=String(window.OBSERVATION_API_URL||'').replace(/\/$/,'');
   let list;
   if(apiUrl){
-    const r=await fetch(`${apiUrl}/players`,{cache:'no-store',headers:{Accept:'application/json'}});
-    if(!r.ok)throw new Error(`無法讀取 Cloudflare 觀察名單 (${r.status})`);
-    const payload=await r.json();
-    list=Array.isArray(payload)?payload:payload.players;
-    if(!Array.isArray(list)||!list.length)throw new Error('Cloudflare 觀察名單格式錯誤');
-  }else{
-    const r=await fetch(`tracked-players.json?v=${Date.now()}`,{cache:'no-store'});
-    if(!r.ok)throw new Error('無法讀取觀察名單');
-    list=await r.json();
-  }
-  players=list;window.trackedPlayers=players;return players;
+    try{
+      const r=await fetch(`${apiUrl}/players`,{cache:'no-store',headers:{Accept:'application/json'}});
+      if(!r.ok)throw new Error(`Cloudflare ${r.status}`);
+      const payload=await r.json();
+      list=Array.isArray(payload)?payload:payload.players;
+      if(!Array.isArray(list)||!list.length)throw new Error('Cloudflare 觀察名單格式錯誤');
+    }catch(error){
+      console.warn('Observation API unavailable; using repository fallback',error);
+      list=await fallbackTrackedPlayers();
+    }
+  }else list=await fallbackTrackedPlayers();
+  return setTrackedPlayers(list);
 }
 function gamesSorted(games){const seen=new Set;return games.filter(g=>{const k=gameId(g);if(seen.has(k))return false;seen.add(k);return g.date}).sort((a,b)=>new Date(b.date)-new Date(a.date));}
 function initials(p){return names(p).en.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();}
@@ -47,9 +57,11 @@ function liveAppearance(p,stat={}){return p.group==='pitching'?num(stat.battersF
 async function fetchPerson(p){try{return (await freshJson(`${API}/people/${p.id}?hydrate=currentTeam`)).people?.[0]||{}}catch(error){console.warn('Player profile unavailable',p.name,error);return {}}}
 async function fetchLiveToday(p,teamIds,level){const ids=[...new Set((Array.isArray(teamIds)?teamIds:[teamIds]).filter(Boolean))].slice(0,4);for(const teamId of ids){try{const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&date=${gameDay()}`),games=schedule.dates?.[0]?.games||[],ordered=[...games].sort((a,b)=>{const rank=g=>g.status?.abstractGameState==='Live'?0:g.status?.abstractGameState==='Final'?1:2;return rank(a)-rank(b)});for(const g of ordered){if(!g.gamePk||g.status?.abstractGameState==='Preview')continue;const box=await freshJson(`${API}/game/${g.gamePk}/boxscore`),key=`ID${p.id}`,bp=box.teams?.home?.players?.[key]||box.teams?.away?.players?.[key];if(!bp)continue;const stat=p.group==='pitching'?(bp.stats?.pitching||{}):(bp.stats?.batting||bp.stats?.hitting||{});if(liveAppearance(p,stat))return {date:gameDay(),level,stat,game:{gamePk:g.gamePk},live:true};}}catch(error){console.warn('Live boxscore unavailable',p.name,teamId,error)}}return null;}
 async function fetchLevel(p,[sportId,level]){const base=`${API}/people/${p.id}/stats?group=${p.group}&season=${new Date().getFullYear()}&sportId=${sportId}`;try{const [sj,gj]=await Promise.all([stableJson(`${base}&stats=season`),freshJson(`${base}&stats=gameLog`)]);return {level,season:sj.stats?.[0]?.splits?.[0]?.stat||null,games:(gj.stats?.[0]?.splits||[]).map(g=>({...g,level}))};}catch(error){console.warn('Stats unavailable',p.name,level,error);return {level,season:null,games:[]}}}
-async function load(p){const [levels,person]=await Promise.all([Promise.all(LEVELS.map(l=>fetchLevel(p,l))),fetchPerson(p)]),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{},loggedToday=games.find(g=>day(g.date)===gameDay()),teamIds=[latest?.team?.id,...games.slice(0,5).map(g=>g.team?.id),person.currentTeam?.id],liveToday=await fetchLiveToday(p,teamIds,active.level||latest?.level||'—');return {levels,games,latest,today:liveToday||loggedToday,season:active.season||{}};}
+async function fetchLevels(p){const levels=[];for(let i=0;i<LEVELS.length;i+=2)levels.push(...await Promise.all(LEVELS.slice(i,i+2).map(l=>fetchLevel(p,l))));return levels;}
+async function load(p){const [levels,person]=await Promise.all([fetchLevels(p),fetchPerson(p)]),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{},loggedToday=games.find(g=>day(g.date)===gameDay()),teamIds=[latest?.team?.id,...games.slice(0,5).map(g=>g.team?.id),person.currentTeam?.id],liveToday=await fetchLiveToday(p,teamIds,active.level||latest?.level||'—');return {levels,games,latest,today:liveToday||loggedToday,season:active.season||{}};}
 function updateMetrics(results){const played=results.map((r,i)=>[r,players[i]]).filter(([r])=>r.today),hits=played.reduce((a,[r,p])=>a+(p.group==='hitting'?num(r.today.stat?.hits):0),0),ks=played.reduce((a,[r,p])=>a+(p.group==='pitching'?num(r.today.stat?.strikeOuts):0),0),hot=played.filter(([r,p])=>p.group==='hitting'?num(r.today.stat?.hits)>1||num(r.today.stat?.homeRuns):num(r.today.stat?.strikeOuts)>=4);document.querySelector('#player-count').textContent=players.length;document.querySelector('#today-count').textContent=played.length;document.querySelector('#highlight-count').textContent=hot.length;document.querySelector('#daily-total').textContent=`${hits} / ${ks}`;}
 async function render(){const summary=document.querySelector('#player-summary'),details=document.querySelector('#player-details');summary.innerHTML='<div class="loading">正在讀取 MLB / MiLB 資料…</div>';const results=[];for(let i=0;i<players.length;i+=3){results.push(...await Promise.all(players.slice(i,i+3).map(load)));}summary.innerHTML=summaryGroup('hitting',results)+summaryGroup('pitching',results);details.innerHTML=players.map((p,i)=>detail(p,results[i])).join('');updateMetrics(results);wireImages();document.querySelector('#last-update').textContent=`更新 ${new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date())}`;document.dispatchEvent(new CustomEvent('tracker:players-loaded',{detail:players}));}
+window.applyTrackedPlayers=async list=>{if(!Array.isArray(list)||!list.length)throw new Error('觀察名單格式錯誤');setTrackedPlayers(list);await render();return players;};
 document.querySelector('#today-date').textContent=new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',weekday:'short'}).format(new Date());
 document.querySelector('#refresh-btn').addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await loadTrackedPlayers();await render()}finally{e.currentTarget.disabled=false}});
 loadTrackedPlayers().then(render).catch(error=>{document.querySelector('#player-summary').innerHTML=`<div class="loading">${error.message}</div>`;console.error(error)});
