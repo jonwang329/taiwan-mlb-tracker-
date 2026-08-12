@@ -2,13 +2,18 @@ let players = [];
 let lastPlayers = [];
 let lastResults = [];
 let lastSignature = '';
+let lastSuccessAt = 0;
+let lastCheckAt = 0;
 const API='https://statsapi.mlb.com/api/v1';
 const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新人聯盟']];
 const CACHE_KEY='taiwan-mlb-tracker:last-good:v2';
+const AUTO_RECHECK_MS=5*60*1000;
+const timeLogic=window.TaiwanGameTime;
+if(!timeLogic)throw new Error('Taiwan game-time helper is not loaded');
+const {taiwanDate:twToday,scheduleQueryWindow:scheduleWindow,gameTaiwanDate,isTaiwanTodayGame}=timeLogic;
 const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_640,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 const val=(v,f='—')=>v??f, num=v=>Number(v||0), day=v=>String(v||'').slice(0,10);
-const twToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const formatTime=ts=>ts?new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(ts)):'—';
 const names=p=>{const a=p.name.split(' ');return {zh:a.shift(),en:a.join(' ')}};
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
 async function stableJson(url){const r=await fetch(url,{headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`MLB API ${r.status}`);return r.json();}
@@ -52,18 +57,87 @@ function summaryGroup(group,results){const hitters=group==='hitting',items=playe
 function detail(p,r){const n=names(p),today=Boolean(r.today);return `<article class="player-detail" id="player-${p.id}"><header>${image(p,true)}<div><span class="level">${currentLevel(r)}</span><h3>${n.zh}</h3><b>${n.en}</b><p>${p.org} · ${p.role}</p></div></header><div class="today-detail"><span>今日賽事</span><strong>${today?(r.today.live?'LIVE · 已出賽':'已出賽'):'今日未出賽'}</strong><p>${today?line(p,r.today):(p.group==='pitching'?'尚無下次登板資訊':'等待下一場比賽')}</p></div><section class="last-five"><div class="subhead"><h4>${p.group==='pitching'?'近 5 次登板':'近 5 場比賽'}</h4><span>LAST 5</span></div>${gameRows(p,r.games||[])}</section><section class="season-stats"><div class="subhead"><h4>本季成績</h4><span>SEASON</span></div>${metricGrid(p,r.season)}</section></article>`;}
 function liveAppearance(p,stat={}){return p.group==='pitching'?num(stat.battersFaced)>0||num(stat.pitchesThrown)>0||num(stat.inningsPitched)>0:num(stat.plateAppearances)>0||num(stat.atBats)>0||num(stat.runs)>0||num(stat.baseOnBalls)>0||num(stat.hitByPitch)>0||num(stat.sacFlies)>0||num(stat.sacBunts)>0;}
 async function fetchPerson(p){try{return (await freshJson(`${API}/people/${p.id}?hydrate=currentTeam`)).people?.[0]||{}}catch(error){console.warn('Player profile unavailable',p.name,error);return {}}}
-async function fetchLiveToday(p,teamIds,level){const ids=[...new Set((Array.isArray(teamIds)?teamIds:[teamIds]).filter(Boolean))].slice(0,4);for(const teamId of ids){try{const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&date=${gameDay()}`),games=schedule.dates?.[0]?.games||[],ordered=[...games].sort((a,b)=>{const rank=g=>g.status?.abstractGameState==='Live'?0:g.status?.abstractGameState==='Final'?1:2;return rank(a)-rank(b)});for(const g of ordered){if(!g.gamePk||g.status?.abstractGameState==='Preview')continue;const box=await freshJson(`${API}/game/${g.gamePk}/boxscore`),key=`ID${p.id}`,bp=box.teams?.home?.players?.[key]||box.teams?.away?.players?.[key];if(!bp)continue;const stat=p.group==='pitching'?(bp.stats?.pitching||{}):(bp.stats?.batting||bp.stats?.hitting||{});if(liveAppearance(p,stat))return {date:gameDay(),level,stat,game:{gamePk:g.gamePk},live:true};}}catch(error){console.warn('Live boxscore unavailable',p.name,teamId,error)}}return null;}
-async function fetchLevel(p,[sportId,level]){const base=`${API}/people/${p.id}/stats?group=${p.group}&season=${new Date().getFullYear()}&sportId=${sportId}`;try{const [sj,gj]=await Promise.all([stableJson(`${base}&stats=season`),freshJson(`${base}&stats=gameLog`)]);return {level,season:sj.stats?.[0]?.splits?.[0]?.stat||null,games:(gj.stats?.[0]?.splits||[]).map(g=>({...g,level}))};}catch(error){console.warn('Stats unavailable',p.name,level,error);return {level,season:null,games:[],failed:true}}}
-async function load(p){const [levels,person]=await Promise.all([Promise.all(LEVELS.map(l=>fetchLevel(p,l))),fetchPerson(p)]),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{},loggedToday=games.find(g=>day(g.date)===gameDay()),teamIds=[latest?.team?.id,...games.slice(0,5).map(g=>g.team?.id),person.currentTeam?.id],liveToday=await fetchLiveToday(p,teamIds,active.level||latest?.level||'—');return {levels,games,latest,today:liveToday||loggedToday,season:active.season||{}};}
+async function fetchOfficialToday(p,teamIds,level,sportId){
+  const ids=[...new Set((Array.isArray(teamIds)?teamIds:[teamIds]).filter(Boolean))].slice(0,4);
+  if(!ids.length)return null;
+  const now=new Date();
+  const {start,end}=scheduleWindow(now);
+  let scheduleChecks=0;
+  let relevantGames=0;
+  let boxscoreChecks=0;
+  let lastError;
+  const seenGames=new Set();
+  for(const teamId of ids){
+    try{
+      const schedule=await freshJson(`${API}/schedule?sportId=${sportId||1}&teamId=${teamId}&startDate=${start}&endDate=${end}`);
+      scheduleChecks+=1;
+      const games=(schedule.dates||[]).flatMap(d=>d.games||[]).filter(g=>isTaiwanTodayGame(g,now));
+      const ordered=[...games].sort((a,b)=>{const rank=g=>g.status?.abstractGameState==='Live'?0:g.status?.abstractGameState==='Final'?1:2;return rank(a)-rank(b)||new Date(b.gameDate||0)-new Date(a.gameDate||0)});
+      for(const g of ordered){
+        if(!g.gamePk||g.status?.abstractGameState==='Preview'||seenGames.has(g.gamePk))continue;
+        seenGames.add(g.gamePk);
+        relevantGames+=1;
+        try{
+          const box=await freshJson(`${API}/game/${g.gamePk}/boxscore`);
+          boxscoreChecks+=1;
+          const key=`ID${p.id}`,bp=box.teams?.home?.players?.[key]||box.teams?.away?.players?.[key];
+          if(!bp)continue;
+          const stat=p.group==='pitching'?(bp.stats?.pitching||{}):(bp.stats?.batting||bp.stats?.hitting||{});
+          if(liveAppearance(p,stat))return {date:gameTaiwanDate(g),level,stat,game:{gamePk:g.gamePk},live:g.status?.abstractGameState==='Live'};
+        }catch(error){lastError=error;console.warn('Official boxscore unavailable',p.name,g.gamePk,error)}
+      }
+    }catch(error){lastError=error;console.warn('Official schedule unavailable',p.name,teamId,error)}
+  }
+  if(scheduleChecks===0)throw lastError||new Error('MLB schedule API unavailable');
+  if(relevantGames>0&&boxscoreChecks===0&&lastError)throw lastError;
+  return null;
+}
+async function fetchLevel(p,[sportId,level]){const base=`${API}/people/${p.id}/stats?group=${p.group}&season=${new Date().getFullYear()}&sportId=${sportId}`;try{const [sj,gj]=await Promise.all([stableJson(`${base}&stats=season`),freshJson(`${base}&stats=gameLog`)]);return {sportId,level,season:sj.stats?.[0]?.splits?.[0]?.stat||null,games:(gj.stats?.[0]?.splits||[]).map(g=>({...g,level}))};}catch(error){console.warn('Stats unavailable',p.name,level,error);return {sportId,level,season:null,games:[],failed:true}}}
+async function load(p){const [levels,person]=await Promise.all([Promise.all(LEVELS.map(l=>fetchLevel(p,l))),fetchPerson(p)]),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{},teamIds=[latest?.team?.id,...games.slice(0,5).map(g=>g.team?.id),person.currentTeam?.id],officialToday=await fetchOfficialToday(p,teamIds,active.level||latest?.level||'—',active.sportId||1);return {levels,games,latest,today:officialToday,season:active.season||{}};}
 function meaningful(r){return Boolean(r?.today||r?.latest||r?.games?.length||r?.levels?.some(x=>x.season));}
 function updateMetrics(results){const played=results.map((r,i)=>[r,players[i]]).filter(([r])=>r.today),hits=played.reduce((a,[r,p])=>a+(p.group==='hitting'?num(r.today.stat?.hits):0),0),ks=played.reduce((a,[r,p])=>a+(p.group==='pitching'?num(r.today.stat?.strikeOuts):0),0),hot=played.filter(([r,p])=>p.group==='hitting'?num(r.today.stat?.hits)>1||num(r.today.stat?.homeRuns):num(r.today.stat?.strikeOuts)>=4);document.querySelector('#player-count').textContent=players.length;document.querySelector('#today-count').textContent=played.length;document.querySelector('#highlight-count').textContent=hot.length;document.querySelector('#daily-total').textContent=`${hits} / ${ks}`;}
 function snapshotSignature(results){return JSON.stringify({players:players.map(p=>[p.id,p.name,p.org,p.group]),results:results.map(r=>({today:r.today,latest:r.latest,season:r.season,games:(r.games||[]).slice(0,5)}))});}
-function saveSnapshot(results){lastPlayers=structuredClone(players);lastResults=structuredClone(results);lastSignature=snapshotSignature(results);try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt:Date.now(),players:lastPlayers,results:lastResults}))}catch(error){console.warn('Could not persist last-good snapshot',error)}}
-function paint(results,statusText){const summary=document.querySelector('#player-summary'),details=document.querySelector('#player-details');summary.innerHTML=summaryGroup('hitting',results)+summaryGroup('pitching',results);details.innerHTML=players.map((p,i)=>detail(p,results[i])).join('');updateMetrics(results);wireImages();document.querySelector('#last-update').textContent=statusText||`更新 ${new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date())}`;document.dispatchEvent(new CustomEvent('tracker:players-loaded',{detail:players}));}
-function restoreSnapshot(){try{const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(!cached||!Array.isArray(cached.players)||!Array.isArray(cached.results)||cached.players.length!==cached.results.length)return false;setTrackedPlayers(cached.players);lastPlayers=structuredClone(cached.players);lastResults=structuredClone(cached.results);lastSignature=snapshotSignature(lastResults);const stamp=cached.savedAt?new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(cached.savedAt)):'上次';paint(lastResults,`顯示上次成功資料 · ${stamp}`);return true}catch(error){console.warn('Could not restore last-good snapshot',error);return false}}
-async function collectResults(){const previousById=new Map(lastPlayers.map((p,i)=>[Number(p.id),lastResults[i]]));const fresh=[];for(let i=0;i<players.length;i+=3){fresh.push(...await Promise.all(players.slice(i,i+3).map(load)));}let freshCount=0;const merged=fresh.map((r,i)=>{if(meaningful(r)){freshCount+=1;return r}return previousById.get(Number(players[i].id))||r});if(!freshCount&&lastResults.length)throw new Error('MLB API 暫時無法更新');return merged;}
-async function refreshData({list=null}={}){const summary=document.querySelector('#player-summary'),lastUpdate=document.querySelector('#last-update');if(lastResults.length)lastUpdate.textContent='更新中…目前顯示上次成功資料';else if(!summary.children.length)summary.innerHTML='<div class="loading">正在讀取 MLB / MiLB 資料…</div>';try{if(list)setTrackedPlayers(list);else await loadTrackedPlayers();const results=await collectResults(),sig=snapshotSignature(results);if(sig!==lastSignature||players.length!==lastPlayers.length){paint(results);saveSnapshot(results)}else{lastUpdate.textContent=`已檢查 · 無資料變更 · ${new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date())}`;}return results}catch(error){console.error(error);if(lastResults.length){setTrackedPlayers(lastPlayers);lastUpdate.textContent='更新失敗 · 顯示上次成功資料';return lastResults}summary.innerHTML=`<div class="loading">${error.message}</div>`;throw error}}
-window.applyTrackedPlayers=async list=>{if(!Array.isArray(list)||!list.length)throw new Error('觀察名單格式錯誤');return refreshData({list})};
+function persistSnapshot(results,savedAt=Date.now()){lastPlayers=structuredClone(players);lastResults=structuredClone(results);lastSignature=snapshotSignature(results);lastSuccessAt=savedAt;try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt,players:lastPlayers,results:lastResults}))}catch(error){console.warn('Could not persist last-good snapshot',error)}}
+function paint(results,statusText){const summary=document.querySelector('#player-summary'),details=document.querySelector('#player-details');summary.innerHTML=summaryGroup('hitting',results)+summaryGroup('pitching',results);details.innerHTML=players.map((p,i)=>detail(p,results[i])).join('');updateMetrics(results);wireImages();document.querySelector('#last-update').textContent=statusText||`MLB API 已更新 · ${formatTime(lastSuccessAt||Date.now())}`;document.dispatchEvent(new CustomEvent('tracker:players-loaded',{detail:players}));}
+function restoreSnapshot(){try{const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(!cached||!Array.isArray(cached.players)||!Array.isArray(cached.results)||cached.players.length!==cached.results.length)return false;setTrackedPlayers(cached.players);lastPlayers=structuredClone(cached.players);lastResults=structuredClone(cached.results);lastSignature=snapshotSignature(lastResults);lastSuccessAt=Number(cached.savedAt)||0;paint(lastResults,`最後有效資料 · ${formatTime(lastSuccessAt)}`);return true}catch(error){console.warn('Could not restore last-good snapshot',error);return false}}
+async function collectResults(){
+  const previousById=new Map(lastPlayers.map((p,i)=>[Number(p.id),lastResults[i]]));
+  const fresh=[];
+  for(let i=0;i<players.length;i+=3){
+    const chunk=players.slice(i,i+3);
+    const settled=await Promise.allSettled(chunk.map(load));
+    fresh.push(...settled.map(entry=>entry.status==='fulfilled'?{result:entry.value,failed:false}:{result:null,failed:true,error:entry.reason}));
+  }
+  let freshCount=0,failedCount=0;
+  const merged=fresh.map((entry,i)=>{
+    if(!entry.failed&&meaningful(entry.result)){freshCount+=1;return entry.result}
+    if(entry.failed)failedCount+=1;
+    return previousById.get(Number(players[i].id))||entry.result||{levels:[],games:[],latest:null,today:null,season:{}};
+  });
+  if(!freshCount&&lastResults.length)throw new Error('MLB / MiLB API 暫時無法更新');
+  return {results:merged,failedCount};
+}
+async function refreshData({list=null,reason='manual'}={}){
+  const summary=document.querySelector('#player-summary'),lastUpdate=document.querySelector('#last-update');
+  lastCheckAt=Date.now();
+  if(lastResults.length)lastUpdate.textContent='正在向 MLB / MiLB 官方資料更新…';else if(!summary.children.length)summary.innerHTML='<div class="loading">正在讀取 MLB / MiLB 官方資料…</div>';
+  try{
+    if(list)setTrackedPlayers(list);else await loadTrackedPlayers();
+    const {results,failedCount}=await collectResults(),sig=snapshotSignature(results),now=Date.now();
+    const changed=sig!==lastSignature||players.length!==lastPlayers.length;
+    persistSnapshot(results,failedCount?lastSuccessAt||now:now);
+    if(changed)paint(results,failedCount?`部分球員 API 暫時無法更新 · 已保留舊資料 · 檢查 ${formatTime(now)}`:`MLB API 已更新 · ${formatTime(now)}`);
+    else lastUpdate.textContent=failedCount?`部分球員 API 暫時無法更新 · 上次完整成功 ${formatTime(lastSuccessAt)}`:`MLB API 已確認 · 無資料變更 · ${formatTime(now)}`;
+    return results;
+  }catch(error){
+    console.error(error);
+    if(lastResults.length){setTrackedPlayers(lastPlayers);lastUpdate.textContent=`MLB API 暫時無法更新 · 上次成功 ${formatTime(lastSuccessAt)}`;return lastResults}
+    summary.innerHTML=`<div class="loading">${error.message}</div>`;
+    throw error;
+  }
+}
+window.applyTrackedPlayers=async list=>{if(!Array.isArray(list)||!list.length)throw new Error('觀察名單格式錯誤');return refreshData({list,reason:'watchlist'})};
 document.querySelector('#today-date').textContent=new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',weekday:'short'}).format(new Date());
-document.querySelector('#refresh-btn').addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await refreshData()}finally{e.currentTarget.disabled=false}});
-const restored=restoreSnapshot();if(!restored)document.querySelector('#player-summary').innerHTML='<div class="loading">正在讀取 MLB / MiLB 資料…</div>';refreshData().catch(()=>{});
+document.querySelector('#refresh-btn').addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await refreshData({reason:'button'})}finally{e.currentTarget.disabled=false}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-lastCheckAt>=AUTO_RECHECK_MS)refreshData({reason:'resume'}).catch(()=>{})});
+const restored=restoreSnapshot();if(!restored)document.querySelector('#player-summary').innerHTML='<div class="loading">正在讀取 MLB / MiLB 官方資料…</div>';refreshData({reason:'startup'}).catch(()=>{});

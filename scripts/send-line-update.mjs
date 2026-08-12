@@ -28,9 +28,9 @@ if (plannedDeliveryKey && deliveries[plannedDeliveryKey]) {
   process.exit(0);
 }
 
-console.log("[data] Loading shared tracked-player list and MLB Stats API data...");
-const current = await collectSnapshot();
-console.log(`[data] Loaded ${current.players.length} players; report date ${current.date}; game date ${current.gameDate}.`);
+console.log("[data] Loading shared tracked-player list and official MLB / MiLB data...");
+const current = await collectSnapshot({previous});
+console.log(`[data] Loaded ${current.players.length} players; Taiwan report date ${current.date}; schedule query ${current.scheduleWindow?.start || "—"}..${current.scheduleWindow?.end || "—"}; stale players ${current.stalePlayers || 0}.`);
 const summaryPeriod = mode === "morning" ? "morning" : "final";
 const deliveryKey = !isTest && slot ? `${current.date}:${slot}` : "";
 const alreadyDelivered = Boolean(deliveryKey && deliveries[deliveryKey]);
