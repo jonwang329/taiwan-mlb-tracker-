@@ -26,8 +26,8 @@ test('in-progress player data uses live boxscore instead of waiting for gameLog'
   assert.match(data,/candidateTeamIds/);
   assert.match(data,/latest\?\.team\?\.id/);
   assert.match(app,/fetchLiveToday/);
-  assert.match(app,/candidateTeamIds/);
-  assert.match(app,/latest\?\.team\?\.id/);
+  assert.match(app,/person\.currentTeam\?\.id/);
+  assert.doesNotMatch(app,/candidateTeamIds/);
   assert.match(app,/\/game\/\$\{g\.gamePk\}\/boxscore/);
   assert.match(app,/plateAppearances/);
   assert.match(app,/LIVE · 已出賽/);
