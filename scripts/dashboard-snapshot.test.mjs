@@ -20,14 +20,47 @@ test('central snapshot seeds the existing last-good cache only when newer',async
   assert.match(bootstrap,/localStorage\.setItem/);
 });
 
-test('website Refresh always requests live data immediately',async()=>{
+test('official MLB or MiLB data is the refresh source of truth',async()=>{
+  const app=await read('app.js');
+  assert.match(app,/fetchOfficialToday/);
+  assert.match(app,/startDate=\$\{start\}&endDate=\$\{end\}/);
+  assert.match(app,/gameTaiwanDate/);
+  assert.match(app,/status\?\.abstractGameState==='Live'/);
+  assert.doesNotMatch(app,/BASEBALL_DAY_CUTOFF|gameDay\(\)/);
+});
+
+test('website checks automatically at startup and after returning to the tab',async()=>{
+  const app=await read('app.js');
+  assert.match(app,/refreshData\(\{reason:'startup'\}\)/);
+  assert.match(app,/visibilitychange/);
+  assert.match(app,/AUTO_RECHECK_MS=5\*60\*1000/);
+  assert.match(app,/refreshData\(\{reason:'resume'\}\)/);
+});
+
+test('Refresh button always requests official data immediately',async()=>{
   const app=await read('app.js');
   assert.match(app,/refresh-btn[^\n]*addEventListener\('click'/);
-  assert.match(app,/await refreshData\(\)/);
-  assert.match(app,/async function refreshData/);
+  assert.match(app,/refreshData\(\{reason:'button'\}\)/);
   assert.match(app,/await loadTrackedPlayers\(\)/);
   assert.match(app,/await collectResults\(\)/);
-  assert.doesNotMatch(app,/setInterval|setTimeout\([^)]*refreshData|lastRefresh|refreshCooldown/i);
+  assert.doesNotMatch(app,/refreshCooldown/i);
+});
+
+test('API failure preserves last-good screen and shows last successful time',async()=>{
+  const app=await read('app.js');
+  assert.match(app,/if\(lastResults\.length\)\{setTrackedPlayers\(lastPlayers\)/);
+  assert.match(app,/MLB API 暫時無法更新 · 上次成功/);
+  assert.match(app,/Promise\.allSettled/);
+  assert.match(app,/previousById/);
+});
+
+test('central fallback builder uses the same official schedule and boxscore source',async()=>{
+  const builder=await read('scripts/build-dashboard-snapshot.mjs');
+  assert.match(builder,/fetchOfficialToday/);
+  assert.match(builder,/startDate=\$\{start\}&endDate=\$\{end\}/);
+  assert.match(builder,/gameTaiwanDate/);
+  assert.match(builder,/MLB schedule API unavailable/);
+  assert.doesNotMatch(builder,/BASEBALL_DAY_CUTOFF|gameDay\(\)/);
 });
 
 test('snapshot builder preserves complete last-known-good player data',async()=>{
