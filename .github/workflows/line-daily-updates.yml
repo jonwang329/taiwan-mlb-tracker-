@@ -2,14 +2,16 @@ name: LINE daily tracker updates
 
 on:
   schedule:
-    # Four explicit Taiwan-time runs. Minute 7 avoids the top-of-hour Actions load spike.
-    - cron: "7 7 * * *"
+    # Multiple opportunities inside each Taiwan-time window. The sender de-duplicates
+    # successful deliveries, so delayed or dropped GitHub schedule events do not
+    # turn a single missed trigger into a missed notification.
+    - cron: "7,17,27,37,47,57 7 * * *"
       timezone: "Asia/Taipei"
-    - cron: "7 8 * * *"
+    - cron: "7,17,27,37,47,57 8 * * *"
       timezone: "Asia/Taipei"
-    - cron: "7 9 * * *"
+    - cron: "7,17,27,37,47,57 9 * * *"
       timezone: "Asia/Taipei"
-    - cron: "7 12 * * *"
+    - cron: "7,17,27,37,47,57 12 * * *"
       timezone: "Asia/Taipei"
   workflow_dispatch:
     inputs:
@@ -50,11 +52,11 @@ jobs:
             active="true"
           else
             case "$EVENT_SCHEDULE" in
-              "7 7 * * *")  mode="morning"; slot="07"; active="true" ;;
-              "7 8 * * *")  mode="changes"; slot="08"; active="true" ;;
-              "7 9 * * *")  mode="changes"; slot="09"; active="true" ;;
-              "7 12 * * *") mode="final"; slot="12"; active="true" ;;
-              *)              mode="skip" ;;
+              "7,17,27,37,47,57 7 * * *")  mode="morning"; slot="07"; active="true" ;;
+              "7,17,27,37,47,57 8 * * *")  mode="changes"; slot="08"; active="true" ;;
+              "7,17,27,37,47,57 9 * * *")  mode="changes"; slot="09"; active="true" ;;
+              "7,17,27,37,47,57 12 * * *") mode="final"; slot="12"; active="true" ;;
+              *)                                mode="skip" ;;
             esac
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
