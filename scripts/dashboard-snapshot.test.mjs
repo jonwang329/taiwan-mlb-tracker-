@@ -20,6 +20,16 @@ test('central snapshot seeds the existing last-good cache only when newer',async
   assert.match(bootstrap,/localStorage\.setItem/);
 });
 
+test('website Refresh always requests live data immediately',async()=>{
+  const app=await read('app.js');
+  assert.match(app,/refresh-btn[^\n]*addEventListener\('click'/);
+  assert.match(app,/await refreshData\(\)/);
+  assert.match(app,/async function refreshData/);
+  assert.match(app,/await loadTrackedPlayers\(\)/);
+  assert.match(app,/await collectResults\(\)/);
+  assert.doesNotMatch(app,/setInterval|setTimeout\([^)]*refreshData|lastRefresh|refreshCooldown/i);
+});
+
 test('snapshot builder preserves complete last-known-good player data',async()=>{
   const builder=await read('scripts/build-dashboard-snapshot.mjs');
   assert.match(builder,/MAX_MLB_REQUESTS=8/);
