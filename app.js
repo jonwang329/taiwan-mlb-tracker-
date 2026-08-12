@@ -5,10 +5,11 @@ let lastSignature = '';
 const API='https://statsapi.mlb.com/api/v1';
 const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新人聯盟']];
 const CACHE_KEY='taiwan-mlb-tracker:last-good:v2';
+const BASEBALL_DAY_CUTOFF_HOURS=6;
 const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_640,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 const val=(v,f='—')=>v??f, num=v=>Number(v||0), day=v=>String(v||'').slice(0,10);
 const twToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()-BASEBALL_DAY_CUTOFF_HOURS*60*60*1000));
 const names=p=>{const a=p.name.split(' ');return {zh:a.shift(),en:a.join(' ')}};
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
 async function stableJson(url){const r=await fetch(url,{headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`MLB API ${r.status}`);return r.json();}
