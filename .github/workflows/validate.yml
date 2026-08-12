@@ -25,6 +25,7 @@ jobs:
           node --check watchlist-manager.js
           node --check cloudflare/observation-worker.js
           node --check cloudflare/line-worker.js
+          node --check cloudflare/line-flex-worker.js
           node --check cloudflare/line-worker-single-cron.js
           node --check scripts/build-dashboard-snapshot.mjs
           node --check scripts/send-line-update.mjs

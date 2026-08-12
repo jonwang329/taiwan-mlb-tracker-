@@ -1,4 +1,5 @@
 # Deployment trigger: 2026-08-12
+# The legacy /internal/line-test endpoint remains available for manual diagnosis; deployment never calls it.
 name: Deploy observation Worker
 
 on:
@@ -8,6 +9,7 @@ on:
     paths:
       - 'cloudflare/observation-worker.js'
       - 'cloudflare/line-worker.js'
+      - 'cloudflare/line-flex-worker.js'
       - 'cloudflare/line-worker-single-cron.js'
       - '.github/workflows/deploy-observation-worker.yml'
       - 'tracked-players.json'
@@ -120,14 +122,14 @@ jobs:
           health=""
           for attempt in $(seq 1 15); do
             health=$(curl -fsS "$line_url/health" || true)
-            if echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true' >/dev/null 2>&1; then
-              echo "LINE Worker ready on attempt $attempt"
-              echo "$health" | jq '{ok,lineScheduler,lineConfigured,cronTimezone}'
+            if echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true and .format == "flex-v1" and .source == "cloudflare-official"' >/dev/null 2>&1; then
+              echo "LINE Flex Worker ready on attempt $attempt"
+              echo "$health" | jq '{ok,lineScheduler,lineConfigured,format,source,cronTimezone}'
               exit 0
             fi
             sleep 2
           done
-          echo "::error::LINE Worker did not report readiness"
+          echo "::error::LINE Flex Worker did not report readiness"
           echo "$health"
           exit 1
       - name: Verify LINE worker without sending a message
@@ -135,8 +137,8 @@ jobs:
           URL: ${{ steps.workers.outputs.line_url }}
         run: |
           health=$(curl -fsS "$URL/health")
-          echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true'
-          echo "Cloudflare LINE worker health verified; no LINE test message sent during deployment"
+          echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true and .format == "flex-v1"'
+          echo "Cloudflare LINE Flex worker verified; no LINE test message sent during deployment"
       - name: Configure dashboard API URL
         env:
           URL: ${{ steps.workers.outputs.observation_url }}
