@@ -1,21 +1,18 @@
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import TaiwanGameTime from '../taiwan-game-time.js';
 
 const API='https://statsapi.mlb.com/api/v1';
 const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新人聯盟']];
 const MAX_MLB_REQUESTS=8;
 const OUTPUT_URL=new URL('../data/dashboard-snapshot.js',import.meta.url);
 const FALLBACK_URL=new URL('../tracked-players.json',import.meta.url);
+const {scheduleQueryWindow,gameTaiwanDate,isTaiwanTodayGame}=TaiwanGameTime;
 let activeMlbRequests=0;
 const waitingMlbRequests=[];
 
 const num=v=>Number(v||0);
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const dateInZone=(date,timeZone)=>new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
-const twToday=()=>dateInZone(new Date(),'Asia/Taipei');
-const scheduleWindow=()=>({start:dateInZone(new Date(Date.now()-24*60*60*1000),'America/New_York'),end:dateInZone(new Date(),'America/New_York')});
-const gameTaiwanDate=game=>game?.gameDate?dateInZone(new Date(game.gameDate),'Asia/Taipei'):'';
-const relevantTodayGame=game=>game?.status?.abstractGameState==='Live'||gameTaiwanDate(game)===twToday();
 
 async function acquireMlbSlot(){
   if(activeMlbRequests<MAX_MLB_REQUESTS){activeMlbRequests+=1;return;}
@@ -95,7 +92,8 @@ async function fetchLevel(player,[sportId,level]){
 async function fetchOfficialToday(player,teamIds,level){
   const ids=[...new Set(teamIds.filter(Boolean))].slice(0,4);
   if(!ids.length)return null;
-  const {start,end}=scheduleWindow();
+  const now=new Date();
+  const {start,end}=scheduleQueryWindow(now);
   let scheduleChecks=0;
   let relevantGames=0;
   let boxscoreChecks=0;
@@ -105,7 +103,7 @@ async function fetchOfficialToday(player,teamIds,level){
     try{
       const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
       scheduleChecks+=1;
-      const games=(schedule.dates||[]).flatMap(date=>date.games||[]).filter(game=>relevantTodayGame(game));
+      const games=(schedule.dates||[]).flatMap(date=>date.games||[]).filter(game=>isTaiwanTodayGame(game,now));
       const ordered=[...games].sort((a,b)=>{
         const rank=game=>game.status?.abstractGameState==='Live'?0:game.status?.abstractGameState==='Final'?1:2;
         return rank(a)-rank(b)||new Date(b.gameDate||0)-new Date(a.gameDate||0);
@@ -121,7 +119,7 @@ async function fetchOfficialToday(player,teamIds,level){
           const boxPlayer=box.teams?.home?.players?.[key]||box.teams?.away?.players?.[key];
           if(!boxPlayer)continue;
           const stat=player.group==='pitching'?(boxPlayer.stats?.pitching||{}):(boxPlayer.stats?.batting||boxPlayer.stats?.hitting||{});
-          if(liveAppearance(player,stat))return {date:gameTaiwanDate(game)||twToday(),level,stat,game:{gamePk:game.gamePk},live:game.status?.abstractGameState==='Live'};
+          if(liveAppearance(player,stat))return {date:gameTaiwanDate(game),level,stat,game:{gamePk:game.gamePk},live:game.status?.abstractGameState==='Live'};
         }catch(error){lastError=error;console.warn(`[snapshot] Official boxscore unavailable for ${player.name}: ${error.message}`);}
       }
     }catch(error){lastError=error;console.warn(`[snapshot] Official schedule unavailable for ${player.name}: ${error.message}`);}
