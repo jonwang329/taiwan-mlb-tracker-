@@ -1,5 +1,5 @@
 (()=>{
-const style=document.createElement('link');style.rel='stylesheet';style.href='watchlist.css?v=20260811-2340';document.head.appendChild(style);
+const style=document.createElement('link');style.rel='stylesheet';style.href='watchlist.css?v=20260812-system';document.head.appendChild(style);
 const API='https://statsapi.mlb.com/api/v1';
 const SPORT_IDS=[1,11,12,13,14,16];
 const OWNER_SESSION='twmlb_owner_session_key';
@@ -7,6 +7,7 @@ const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_160,q_auto:
 const $=s=>document.querySelector(s);
 const modal=$('#watchlist-modal'), open=$('#manage-players-btn'), close=$('#watchlist-close'), form=$('#player-search-form'), input=$('#player-search'), searchButton=$('#player-search-button'), results=$('#player-search-results'), current=$('#watchlist-current'), status=$('#watchlist-status');
 const players=()=>window.trackedPlayers||[];
+let mutationInFlight=false;
 function apiUrl(){return String(window.OBSERVATION_API_URL||'').replace(/\/$/,'');}
 function ownerKey(){return sessionStorage.getItem(OWNER_SESSION)||'';}
 function setOwnerKey(value){if(value)sessionStorage.setItem(OWNER_SESSION,value);else sessionStorage.removeItem(OWNER_SESSION);}
@@ -20,6 +21,7 @@ function ensureUnlockUI(){
   $('#owner-key-input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();verifyOwner();}});
   return box;
 }
+function setMutationBusy(busy){mutationInFlight=busy;document.querySelectorAll('[data-watch-action]').forEach(button=>{button.disabled=busy||(!ownerKey()&&button.dataset.watchAction==='remove')});}
 function updateOwnerUI(){
   const box=ensureUnlockUI();
   const unlocked=!!ownerKey();
@@ -28,7 +30,7 @@ function updateOwnerUI(){
   box.querySelector('span').textContent=unlocked?'你可以直接加入或移除球員。關閉瀏覽器後會自動鎖定。':'只有你可以修改觀察名單。此驗證只保留在目前瀏覽器 session。';
   box.querySelector('div').hidden=unlocked;
   form.hidden=!unlocked;
-  current.querySelectorAll('button.remove-player').forEach(b=>b.disabled=!unlocked);
+  current.querySelectorAll('button.remove-player').forEach(b=>b.disabled=!unlocked||mutationInFlight);
 }
 async function verifyOwner(){
   const base=apiUrl(), field=$('#owner-key-input'), button=$('#owner-unlock-btn');
@@ -43,27 +45,34 @@ async function verifyOwner(){
   }catch(e){setOwnerKey('');status.textContent='驗證失敗：'+e.message;}
   finally{button.disabled=false;button.textContent='解鎖管理';}
 }
-async function refreshTracker(){if(typeof loadTrackedPlayers==='function')await loadTrackedPlayers();if(typeof render==='function')await render();renderCurrent();}
+async function applyWatchlist(list){
+  if(!Array.isArray(list))return;
+  if(typeof window.applyTrackedPlayers==='function')await window.applyTrackedPlayers(list);
+  else{window.trackedPlayers=list;renderCurrent();document.dispatchEvent(new CustomEvent('tracker:players-loaded',{detail:list}));}
+}
 async function updateWatchlist(action,id){
   const base=apiUrl(), key=ownerKey();
+  if(mutationInFlight)return;
   if(!base){status.textContent='觀察名單服務尚未連線';return;}
   if(!key){status.textContent='請先解鎖 Owner mode';updateOwnerUI();return;}
-  status.textContent=action==='add'?'正在加入球員…':'正在移除球員…';
+  status.textContent=action==='add'?'正在加入球員…':'正在移除球員…';setMutationBusy(true);
   try{
     const response=await fetch(action==='add'?`${base}/players`:`${base}/players/${id}`,{method:action==='add'?'POST':'DELETE',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/json'},body:action==='add'?JSON.stringify({id:Number(id)}):undefined});
     const payload=await response.json().catch(()=>({}));
     if(response.status===401){setOwnerKey('');updateOwnerUI();throw new Error('Owner 驗證已失效，請重新解鎖');}
     if(!response.ok)throw new Error(payload.error||`更新失敗 (${response.status})`);
-    window.trackedPlayers=payload.players||players();await refreshTracker();if(action==='add')results.innerHTML='';
-    status.textContent=action==='add'?'✅ 已加入，網站與 LINE 共用名單已更新':'✅ 已移除，網站與 LINE 共用名單已更新';
+    await applyWatchlist(payload.players||players());
+    if(action==='add')results.innerHTML='';
+    status.textContent=payload.alreadyTracked?'✅ 球員已經在觀察名單中':payload.alreadyRemoved?'✅ 球員已經不在觀察名單中':action==='add'?'✅ 已加入，網站與 LINE 共用名單已更新':'✅ 已移除，網站與 LINE 共用名單已更新';
   }catch(e){status.textContent='更新失敗：'+e.message;console.error(e);}
+  finally{setMutationBusy(false);updateOwnerUI();}
 }
 function renderCurrent(){current.innerHTML=players().map(p=>`<div class="watch-row"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${p.name}</strong><span>${p.org||'MLB / MiLB'} · ${p.role||'—'}</span></div><button class="remove-player" type="button" data-watch-action="remove" data-player-id="${p.id}" aria-label="移除 ${p.name}">移除</button></div>`).join('')||'<p class="watch-empty">目前沒有追蹤球員</p>';updateOwnerUI();}
 function show(){renderCurrent();modal.hidden=false;document.body.classList.add('modal-open');status.textContent=ownerKey()?'Owner mode 已解鎖，可直接管理名單。':'請先解鎖 Owner mode；朋友只能查看，不能修改。';setTimeout(()=>ownerKey()?input.focus():$('#owner-key-input')?.focus(),30)}
 function hide(){modal.hidden=true;document.body.classList.remove('modal-open');input.value='';results.innerHTML='';status.textContent=''}
 open.addEventListener('click',show);close.addEventListener('click',hide);modal.addEventListener('click',e=>{if(e.target===modal)hide()});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!modal.hidden)hide()});
 current.addEventListener('click',e=>{const b=e.target.closest('[data-watch-action="remove"]');if(b&&!b.disabled)updateWatchlist('remove',b.dataset.playerId)});
-results.addEventListener('click',e=>{const b=e.target.closest('[data-watch-action="add"]');if(b)updateWatchlist('add',b.dataset.playerId)});
+results.addEventListener('click',e=>{const b=e.target.closest('[data-watch-action="add"]');if(b&&!b.disabled)updateWatchlist('add',b.dataset.playerId)});
 let timer;
 input.addEventListener('input',()=>{clearTimeout(timer);const q=input.value.trim();results.innerHTML='';status.textContent=q.length&&q.length<2?'請至少輸入 2 個字元':'';if(q.length<2)return;timer=setTimeout(()=>search(q),450)});
 form.addEventListener('submit',e=>{e.preventDefault();clearTimeout(timer);search(input.value.trim())});
