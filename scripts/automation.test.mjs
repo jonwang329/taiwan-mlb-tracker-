@@ -25,15 +25,22 @@ test('LINE retries are deduplicated before expensive MLB data loading',async()=>
   assert.ok(sender.indexOf('retry suppressed before MLB data fetch')<sender.indexOf('[data] Loading shared tracked-player list'),'duplicate suppression must happen before MLB requests');
 });
 
-test('in-progress and same-day player data stay fresh',async()=>{
-  const data=await read('scripts/shared-tracker-data.mjs');const app=await read('app.js');
+test('official gameDate converted to Taiwan drives website and LINE today data',async()=>{
+  const data=await read('scripts/shared-tracker-data.mjs');const app=await read('app.js');const html=await read('index.html');
+  assert.match(html,/taiwan-game-time\.js/);
+  assert.ok(html.indexOf('taiwan-game-time.js')<html.indexOf('app.js'),'Taiwan date helper must load before app.js');
+  assert.match(data,/TaiwanGameTime/);
+  assert.match(data,/isTaiwanTodayGame/);
+  assert.match(data,/officialBoxscoreAppearance/);
+  assert.doesNotMatch(data,/baseballDate/);
   assert.match(data,/\/game\/\$\{scheduled\.gamePk\}\/boxscore/);
   assert.match(data,/plateAppearances/);
-  assert.match(data,/liveBoxscoreAppearance/);
   assert.match(data,/cache:"no-store"/);
   assert.match(data,/liveSource/);
   assert.match(data,/candidateTeamIds/);
   assert.match(data,/latest\?\.team\?\.id/);
+  assert.match(app,/TaiwanGameTime/);
+  assert.match(app,/isTaiwanTodayGame/);
   assert.match(app,/fetchOfficialToday/);
   assert.match(app,/games\.slice\(0,5\)\.map\(g=>g\.team\?\.id\)/);
   assert.match(app,/slice\(0,4\)/);
@@ -64,8 +71,8 @@ test('dashboard bounds MLB requests and keeps last-good data on refresh failure'
 });
 
 test('manual LINE tests are clearly labeled and share production sender',async()=>{
-  const sender=await read('scripts/send-line-update.mjs');const data=await read('scripts/shared-tracker-data.mjs');
-  assert.match(data,/🧪 TEST — Taiwan MLB Tracker/);assert.match(sender,/shared-tracker-data\.mjs/);assert.match(sender,/Manual test does not modify the production snapshot/);
+  const sender=await read('scripts/send-line-update.mjs');const data=await read('scripts/shared-tracker-data.mjs');const workflow=await read('.github/workflows/line-daily-updates.yml');
+  assert.match(data,/🧪 TEST — Taiwan MLB Tracker/);assert.match(sender,/shared-tracker-data\.mjs/);assert.match(sender,/Manual test does not modify the production snapshot/);assert.match(sender,/collectSnapshot\(\{previous\}\)/);assert.match(workflow,/Restore the last successful tracker snapshot/);
 });
 
 test('dashboard and LINE use the same Cloudflare observation API with setup fallback',async()=>{
