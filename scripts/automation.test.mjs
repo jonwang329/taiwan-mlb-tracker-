@@ -4,24 +4,25 @@ import { readFile } from 'node:fs/promises';
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('Taiwan production LINE scheduler uses four explicit resilient slots',async()=>{
+test('Taiwan production LINE scheduler uses four retry windows',async()=>{
   const yml=await read('.github/workflows/line-daily-updates.yml');
-  assert.match(yml,/cron: "7 7 \* \* \*"/);
-  assert.match(yml,/cron: "7 8 \* \* \*"/);
-  assert.match(yml,/cron: "7 9 \* \* \*"/);
-  assert.match(yml,/cron: "7 12 \* \* \*"/);
+  assert.match(yml,/cron: "7,17,27,37,47,57 7 \* \* \*"/);
+  assert.match(yml,/cron: "7,17,27,37,47,57 8 \* \* \*"/);
+  assert.match(yml,/cron: "7,17,27,37,47,57 9 \* \* \*"/);
+  assert.match(yml,/cron: "7,17,27,37,47,57 12 \* \* \*"/);
   assert.match(yml,/timezone: "Asia\/Taipei"/);
   assert.match(yml,/EVENT_SCHEDULE/);
-  assert.match(yml,/"7 7 \* \* \*"\)\s+mode="morning"; slot="07"/);
-  assert.match(yml,/"7 8 \* \* \*"\)\s+mode="changes"; slot="08"/);
-  assert.match(yml,/"7 9 \* \* \*"\)\s+mode="changes"; slot="09"/);
-  assert.match(yml,/"7 12 \* \* \*"\)\s+mode="final"; slot="12"/);
+  assert.match(yml,/"7,17,27,37,47,57 7 \* \* \*"\)\s+mode="morning"; slot="07"/);
+  assert.match(yml,/"7,17,27,37,47,57 8 \* \* \*"\)\s+mode="changes"; slot="08"/);
+  assert.match(yml,/"7,17,27,37,47,57 9 \* \* \*"\)\s+mode="changes"; slot="09"/);
+  assert.match(yml,/"7,17,27,37,47,57 12 \* \* \*"\)\s+mode="final"; slot="12"/);
   assert.match(yml,/NOTIFICATION_SLOT/);assert.match(yml,/workflow_dispatch:/);assert.match(yml,/--test/);
 });
 
-test('LINE retries are deduplicated and no-change slots still notify',async()=>{
+test('LINE retries are deduplicated before expensive MLB data loading',async()=>{
   const sender=await read('scripts/send-line-update.mjs');
-  assert.match(sender,/_deliveries/);assert.match(sender,/alreadyDelivered/);assert.match(sender,/retry suppressed/);assert.match(sender,/No new player changes since the previous update/);
+  assert.match(sender,/_deliveries/);assert.match(sender,/plannedDeliveryKey/);assert.match(sender,/retry suppressed before MLB data fetch/);assert.match(sender,/process\.exit\(0\)/);assert.match(sender,/No new player changes since the previous update/);
+  assert.ok(sender.indexOf('retry suppressed before MLB data fetch')<sender.indexOf('[data] Loading shared tracked-player list'),'duplicate suppression must happen before MLB requests');
 });
 
 test('in-progress and same-day player data stay fresh',async()=>{
@@ -42,6 +43,18 @@ test('in-progress and same-day player data stay fresh',async()=>{
   assert.match(app,/LIVE · 已出賽/);
 });
 
+test('desktop dashboard limits MLB request bursts and survives observation API failures',async()=>{
+  const app=await read('app.js');
+  assert.match(app,/MAX_MLB_REQUESTS=8/);
+  assert.match(app,/acquireMlbSlot/);
+  assert.match(app,/AbortController/);
+  assert.match(app,/fetchLevels/);
+  assert.match(app,/LEVELS\.slice\(i,i\+2\)/);
+  assert.match(app,/Observation API unavailable; using repository fallback/);
+  assert.match(app,/fallbackTrackedPlayers/);
+  assert.match(app,/window\.applyTrackedPlayers/);
+});
+
 test('manual LINE tests are clearly labeled and share production sender',async()=>{
   const sender=await read('scripts/send-line-update.mjs');const data=await read('scripts/shared-tracker-data.mjs');
   assert.match(data,/🧪 TEST — Taiwan MLB Tracker/);assert.match(sender,/shared-tracker-data\.mjs/);assert.match(sender,/Manual test does not modify the production snapshot/);
@@ -52,7 +65,7 @@ test('dashboard and LINE use the same Cloudflare observation API with setup fall
   assert.match(app,/OBSERVATION_API_URL/);assert.match(app,/\/players/);assert.match(lineData,/OBSERVATION_API_URL/);assert.match(lineData,/\/players/);assert.match(lineWorkflow,/OBSERVATION_API_URL/);assert.match(app,/tracked-players\.json/);assert.match(lineData,/tracked-players\.json/);
 });
 
-test('watchlist UI stays in-site and requires owner bearer authentication',async()=>{
+test('watchlist UI stays in-site and applies generic mutation responses directly',async()=>{
   const manager=await read('watchlist-manager.js');
   assert.match(manager,/method:action==='add'\?'POST':'DELETE'/);
   assert.match(manager,/Authorization:`Bearer \$\{key\}`/);
@@ -60,16 +73,20 @@ test('watchlist UI stays in-site and requires owner bearer authentication',async
   assert.match(manager,/sessionStorage/);
   assert.match(manager,/data-watch-action="add"/);
   assert.match(manager,/data-watch-action="remove"/);
+  assert.match(manager,/window\.applyTrackedPlayers/);
+  assert.match(manager,/mutationInFlight/);
+  assert.doesNotMatch(manager,/await loadTrackedPlayers\(\)/);
   assert.doesNotMatch(manager,/issues\/new/);
   assert.doesNotMatch(manager,/github\.com/);
 });
 
-test('Cloudflare Worker requires owner auth and migrates Huang once',async()=>{
+test('Cloudflare Worker uses generic idempotent add/delete without one-player migrations',async()=>{
   const worker=await read('cloudflare/observation-worker.js');const deploy=await read('.github/workflows/deploy-observation-worker.yml');
   assert.match(worker,/OWNER_KEY_SHA256/);assert.match(worker,/Bearer /);assert.match(worker,/\/owner\/verify/);
   assert.doesNotMatch(worker,/TRUSTED_ORIGINS\.has\(origin\)\) return true/);
   assert.match(worker,/request\.method === 'POST'/);assert.match(worker,/request\.method==='DELETE'/);assert.match(worker,/env\.OBSERVATION_LIST\.put/);assert.match(worker,/mlbPlayer\(id\)/);
-  assert.match(worker,/MIGRATION_KEY/);assert.match(worker,/829473/);assert.match(worker,/黃仲翔 Chung-Hsiang Huang/);
+  assert.match(worker,/alreadyTracked:true/);assert.match(worker,/alreadyRemoved:true/);
+  assert.doesNotMatch(worker,/MIGRATION_KEY/);assert.doesNotMatch(worker,/migration:2026/);
   assert.match(deploy,/taiwan-mlb-observation-list/);assert.match(deploy,/binding = "OBSERVATION_LIST"/);
 });
 
