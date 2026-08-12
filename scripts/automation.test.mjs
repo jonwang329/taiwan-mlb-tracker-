@@ -4,10 +4,16 @@ import { readFile } from 'node:fs/promises';
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('Taiwan production cron schedule remains exact',async()=>{
+test('Taiwan production cron schedule has retry windows',async()=>{
   const yml=await read('.github/workflows/line-daily-updates.yml');
-  for(const cron of ['5 23 * * *','5 0 * * *','5 1 * * *','5 4 * * *']) assert.match(yml,new RegExp(cron.replace(/\*/g,'\\*')));
+  for(const cron of ['5,15,25,35 23 * * *','5,15,25,35 0 * * *','5,15,25,35 1 * * *','5,15,25,35 4 * * *']) assert.match(yml,new RegExp(cron.replace(/[,*]/g,m=>m==='*'?'\\*':m)));
+  assert.match(yml,/NOTIFICATION_SLOT/);assert.match(yml,/slot="07"/);assert.match(yml,/slot="08"/);assert.match(yml,/slot="09"/);assert.match(yml,/slot="12"/);
   assert.match(yml,/workflow_dispatch:/);assert.match(yml,/--test/);
+});
+
+test('LINE retries are deduplicated and no-change slots still notify',async()=>{
+  const sender=await read('scripts/send-line-update.mjs');
+  assert.match(sender,/_deliveries/);assert.match(sender,/alreadyDelivered/);assert.match(sender,/retry suppressed/);assert.match(sender,/No new player changes since the previous update/);
 });
 
 test('manual LINE tests are clearly labeled and share production sender',async()=>{
