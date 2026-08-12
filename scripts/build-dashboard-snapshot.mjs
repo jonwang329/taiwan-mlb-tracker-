@@ -83,13 +83,13 @@ async function fetchLevel(player,[sportId,level]){
   const base=`${API}/people/${player.id}/stats?group=${player.group}&season=${new Date().getFullYear()}&sportId=${sportId}`;
   try{
     const [seasonJson,logJson]=await Promise.all([freshJson(`${base}&stats=season`),freshJson(`${base}&stats=gameLog`)]);
-    return {level,season:seasonJson.stats?.[0]?.splits?.[0]?.stat||null,games:(logJson.stats?.[0]?.splits||[]).map(game=>({...game,level}))};
+    return {sportId,level,season:seasonJson.stats?.[0]?.splits?.[0]?.stat||null,games:(logJson.stats?.[0]?.splits||[]).map(game=>({...game,level}))};
   }catch(error){
     console.warn(`[snapshot] Stats unavailable for ${player.name} ${level}: ${error.message}`);
-    return {level,season:null,games:[],failed:true};
+    return {sportId,level,season:null,games:[],failed:true};
   }
 }
-async function fetchOfficialToday(player,teamIds,level){
+async function fetchOfficialToday(player,teamIds,level,sportId){
   const ids=[...new Set(teamIds.filter(Boolean))].slice(0,4);
   if(!ids.length)return null;
   const now=new Date();
@@ -101,7 +101,7 @@ async function fetchOfficialToday(player,teamIds,level){
   const seenGames=new Set();
   for(const teamId of ids){
     try{
-      const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
+      const schedule=await freshJson(`${API}/schedule?sportId=${sportId||1}&teamId=${teamId}&startDate=${start}&endDate=${end}`);
       scheduleChecks+=1;
       const games=(schedule.dates||[]).flatMap(date=>date.games||[]).filter(game=>isTaiwanTodayGame(game,now));
       const ordered=[...games].sort((a,b)=>{
@@ -134,8 +134,8 @@ async function loadPlayer(player){
   const latest=games[0]||null;
   const active=levels.find(level=>level.level===latest?.level)||levels.find(level=>level.season)||{};
   const teamIds=[latest?.team?.id,...games.slice(0,5).map(game=>game.team?.id),person.currentTeam?.id];
-  const officialToday=await fetchOfficialToday(player,teamIds,active.level||latest?.level||'—');
-  const compactLevels=levels.map(({level,season})=>({level,season,games:[]}));
+  const officialToday=await fetchOfficialToday(player,teamIds,active.level||latest?.level||'—',active.sportId||1);
+  const compactLevels=levels.map(({sportId,level,season})=>({sportId,level,season,games:[]}));
   return {levels:compactLevels,games:games.slice(0,5),latest,today:officialToday,season:active.season||{}};
 }
 function meaningful(result){
