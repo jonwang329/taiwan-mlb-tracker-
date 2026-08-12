@@ -4,13 +4,18 @@ import { readFile } from 'node:fs/promises';
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('Taiwan production LINE scheduler uses one resilient watchdog cron',async()=>{
+test('Taiwan production LINE scheduler uses four explicit resilient slots',async()=>{
   const yml=await read('.github/workflows/line-daily-updates.yml');
-  assert.match(yml,/7,17,27,37,47,57 \* \* \* \*/);
+  assert.match(yml,/cron: "7 7 \* \* \*"/);
+  assert.match(yml,/cron: "7 8 \* \* \*"/);
+  assert.match(yml,/cron: "7 9 \* \* \*"/);
+  assert.match(yml,/cron: "7 12 \* \* \*"/);
   assert.match(yml,/timezone: "Asia\/Taipei"/);
-  assert.match(yml,/TZ=Asia\/Taipei date/);
-  assert.match(yml,/slot="07"/);assert.match(yml,/slot="08"/);assert.match(yml,/slot="09"/);assert.match(yml,/slot="12"/);
-  assert.match(yml,/active="false"/);assert.match(yml,/active="true"/);
+  assert.match(yml,/EVENT_SCHEDULE/);
+  assert.match(yml,/"7 7 \* \* \*"\)\s+mode="morning"; slot="07"/);
+  assert.match(yml,/"7 8 \* \* \*"\)\s+mode="changes"; slot="08"/);
+  assert.match(yml,/"7 9 \* \* \*"\)\s+mode="changes"; slot="09"/);
+  assert.match(yml,/"7 12 \* \* \*"\)\s+mode="final"; slot="12"/);
   assert.match(yml,/NOTIFICATION_SLOT/);assert.match(yml,/workflow_dispatch:/);assert.match(yml,/--test/);
 });
 
@@ -19,7 +24,7 @@ test('LINE retries are deduplicated and no-change slots still notify',async()=>{
   assert.match(sender,/_deliveries/);assert.match(sender,/alreadyDelivered/);assert.match(sender,/retry suppressed/);assert.match(sender,/No new player changes since the previous update/);
 });
 
-test('in-progress player data uses live boxscore instead of waiting for gameLog',async()=>{
+test('in-progress and same-day player data stay fresh',async()=>{
   const data=await read('scripts/shared-tracker-data.mjs');const app=await read('app.js');
   assert.match(data,/\/game\/\$\{scheduled\.gamePk\}\/boxscore/);
   assert.match(data,/plateAppearances/);
@@ -29,8 +34,9 @@ test('in-progress player data uses live boxscore instead of waiting for gameLog'
   assert.match(data,/candidateTeamIds/);
   assert.match(data,/latest\?\.team\?\.id/);
   assert.match(app,/fetchLiveToday/);
-  assert.match(app,/teamIds=\[latest\?\.team\?\.id,person\.currentTeam\?\.id\]/);
-  assert.match(app,/slice\(0,2\)/);
+  assert.match(app,/games\.slice\(0,5\)\.map\(g=>g\.team\?\.id\)/);
+  assert.match(app,/slice\(0,4\)/);
+  assert.match(app,/stableJson\(`\$\{base\}&stats=season`\),freshJson\(`\$\{base\}&stats=gameLog`\)/);
   assert.match(app,/\/game\/\$\{g\.gamePk\}\/boxscore/);
   assert.match(app,/plateAppearances/);
   assert.match(app,/LIVE · 已出賽/);
@@ -58,11 +64,12 @@ test('watchlist UI stays in-site and requires owner bearer authentication',async
   assert.doesNotMatch(manager,/github\.com/);
 });
 
-test('Cloudflare Worker requires owner key for every mutation',async()=>{
+test('Cloudflare Worker requires owner auth and migrates Huang once',async()=>{
   const worker=await read('cloudflare/observation-worker.js');const deploy=await read('.github/workflows/deploy-observation-worker.yml');
   assert.match(worker,/OWNER_KEY_SHA256/);assert.match(worker,/Bearer /);assert.match(worker,/\/owner\/verify/);
   assert.doesNotMatch(worker,/TRUSTED_ORIGINS\.has\(origin\)\) return true/);
   assert.match(worker,/request\.method === 'POST'/);assert.match(worker,/request\.method==='DELETE'/);assert.match(worker,/env\.OBSERVATION_LIST\.put/);assert.match(worker,/mlbPlayer\(id\)/);
+  assert.match(worker,/MIGRATION_KEY/);assert.match(worker,/829473/);assert.match(worker,/黃仲翔 Chung-Hsiang Huang/);
   assert.match(deploy,/taiwan-mlb-observation-list/);assert.match(deploy,/binding = "OBSERVATION_LIST"/);
 });
 
