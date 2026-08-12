@@ -2,10 +2,14 @@ name: LINE daily tracker updates
 
 on:
   schedule:
-    # One frequent scheduler is simpler and more resilient than four separate hourly crons.
-    # Run away from the top of the hour, where GitHub documents higher schedule load.
-    # Taiwan time is explicit to remove UTC conversion mistakes.
-    - cron: "7,17,27,37,47,57 * * * *"
+    # Four explicit Taiwan-time runs. Minute 7 avoids the top-of-hour Actions load spike.
+    - cron: "7 7 * * *"
+      timezone: "Asia/Taipei"
+    - cron: "7 8 * * *"
+      timezone: "Asia/Taipei"
+    - cron: "7 9 * * *"
+      timezone: "Asia/Taipei"
+    - cron: "7 12 * * *"
       timezone: "Asia/Taipei"
   workflow_dispatch:
     inputs:
@@ -34,6 +38,7 @@ jobs:
         id: notification
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
           MANUAL_MODE: ${{ inputs.mode }}
         run: |
           test_flag=""
@@ -44,20 +49,19 @@ jobs:
             test_flag="--test"
             active="true"
           else
-            hour=$(TZ=Asia/Taipei date '+%H')
-            case "$hour" in
-              07) mode="morning"; slot="07"; active="true" ;;
-              08) mode="changes"; slot="08"; active="true" ;;
-              09) mode="changes"; slot="09"; active="true" ;;
-              12) mode="final"; slot="12"; active="true" ;;
-              *)  mode="skip" ;;
+            case "$EVENT_SCHEDULE" in
+              "7 7 * * *")  mode="morning"; slot="07"; active="true" ;;
+              "7 8 * * *")  mode="changes"; slot="08"; active="true" ;;
+              "7 9 * * *")  mode="changes"; slot="09"; active="true" ;;
+              "7 12 * * *") mode="final"; slot="12"; active="true" ;;
+              *)              mode="skip" ;;
             esac
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "slot=$slot" >> "$GITHUB_OUTPUT"
           echo "test_flag=$test_flag" >> "$GITHUB_OUTPUT"
           echo "active=$active" >> "$GITHUB_OUTPUT"
-          echo "Taiwan time: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S %Z'); mode=$mode; slot=${slot:-manual}; active=$active"
+          echo "Taiwan time: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M:%S %Z'); schedule=${EVENT_SCHEDULE:-manual}; mode=$mode; slot=${slot:-manual}; active=$active"
 
       - name: Load observation API URL
         if: steps.notification.outputs.active == 'true'
