@@ -4,29 +4,37 @@ import { readFile } from 'node:fs/promises';
 
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('Taiwan production LINE scheduler uses four retry windows',async()=>{
-  const yml=await read('.github/workflows/line-daily-updates.yml');
-  assert.match(yml,/cron: "7,17,27,37,47,57 7 \* \* \*"/);
-  assert.match(yml,/cron: "7,17,27,37,47,57 8 \* \* \*"/);
-  assert.match(yml,/cron: "7,17,27,37,47,57 9 \* \* \*"/);
-  assert.match(yml,/cron: "7,17,27,37,47,57 12 \* \* \*"/);
-  assert.match(yml,/timezone: "Asia\/Taipei"/);
-  assert.match(yml,/EVENT_SCHEDULE/);
-  assert.match(yml,/"7,17,27,37,47,57 7 \* \* \*"\)\s+mode="morning"; slot="07"/);
-  assert.match(yml,/"7,17,27,37,47,57 8 \* \* \*"\)\s+mode="changes"; slot="08"/);
-  assert.match(yml,/"7,17,27,37,47,57 9 \* \* \*"\)\s+mode="changes"; slot="09"/);
-  assert.match(yml,/"7,17,27,37,47,57 12 \* \* \*"\)\s+mode="final"; slot="12"/);
-  assert.match(yml,/NOTIFICATION_SLOT/);assert.match(yml,/workflow_dispatch:/);assert.match(yml,/--test/);
+test('Cloudflare owns the four Taiwan production LINE schedules and GitHub is manual fallback only',async()=>{
+  const worker=await read('cloudflare/observation-worker.js');
+  const deploy=await read('.github/workflows/deploy-observation-worker.yml');
+  const githubLine=await read('.github/workflows/line-daily-updates.yml');
+  assert.doesNotMatch(githubLine,/\bschedule:/);
+  assert.match(githubLine,/workflow_dispatch:/);
+  assert.match(githubLine,/manual fallback/i);
+  assert.match(deploy,/\[triggers\]/);
+  assert.match(deploy,/crons = \["0 23 \* \* \*", "0 0 \* \* \*", "0 1 \* \* \*", "0 4 \* \* \*"\]/);
+  assert.match(worker,/async scheduled\(controller,env,ctx\)/);
+  assert.match(worker,/\['0 23 \* \* \*', \{slot:'07', mode:'morning'\}\]/);
+  assert.match(worker,/\['0 0 \* \* \*', \{slot:'08', mode:'changes'\}\]/);
+  assert.match(worker,/\['0 1 \* \* \*', \{slot:'09', mode:'changes'\}\]/);
+  assert.match(worker,/\['0 4 \* \* \*', \{slot:'12', mode:'final'\}\]/);
+  assert.match(worker,/api\.line\.me\/v2\/bot\/message\/push/);
+  assert.match(deploy,/secret put LINE_CHANNEL_ACCESS_TOKEN/);
+  assert.match(deploy,/secret put LINE_DESTINATION_ID/);
+  assert.match(deploy,/internal\/line-test/);
 });
 
-test('LINE retries are deduplicated before expensive MLB data loading',async()=>{
-  const sender=await read('scripts/send-line-update.mjs');
-  assert.match(sender,/_deliveries/);assert.match(sender,/plannedDeliveryKey/);assert.match(sender,/retry suppressed before MLB data fetch/);assert.match(sender,/process\.exit\(0\)/);assert.match(sender,/No new player changes since the previous update/);
-  assert.ok(sender.indexOf('retry suppressed before MLB data fetch')<sender.indexOf('[data] Loading shared tracked-player list'),'duplicate suppression must happen before MLB requests');
+test('Cloudflare LINE production state deduplicates delivered slots in KV',async()=>{
+  const worker=await read('cloudflare/observation-worker.js');
+  assert.match(worker,/LINE_STATE_KEY/);
+  assert.match(worker,/state\.deliveries\?\.\[deliveryKey\]/);
+  assert.match(worker,/suppressed:true/);
+  assert.match(worker,/OBSERVATION_LIST\.put\(LINE_STATE_KEY/);
+  assert.match(worker,/deliveries:trimmed/);
 });
 
 test('official gameDate converted to Taiwan drives website and LINE today data',async()=>{
-  const data=await read('scripts/shared-tracker-data.mjs');const app=await read('app.js');const html=await read('index.html');
+  const data=await read('scripts/shared-tracker-data.mjs');const app=await read('app.js');const html=await read('index.html');const worker=await read('cloudflare/observation-worker.js');
   assert.match(html,/taiwan-game-time\.js/);
   assert.ok(html.indexOf('taiwan-game-time.js')<html.indexOf('app.js'),'Taiwan date helper must load before app.js');
   assert.match(data,/TaiwanGameTime/);
@@ -48,6 +56,9 @@ test('official gameDate converted to Taiwan drives website and LINE today data',
   assert.match(app,/\/game\/\$\{g\.gamePk\}\/boxscore/);
   assert.match(app,/plateAppearances/);
   assert.match(app,/LIVE · 已出賽/);
+  assert.match(worker,/gameTaiwanDate/);
+  assert.match(worker,/todaySchedule/);
+  assert.match(worker,/\/game\/\$\{game\.gamePk\}\/boxscore/);
 });
 
 test('dashboard bounds MLB requests and keeps last-good data on refresh failure',async()=>{
@@ -70,14 +81,22 @@ test('dashboard bounds MLB requests and keeps last-good data on refresh failure'
   assert.doesNotMatch(app,/summary\.innerHTML='<div class="loading">正在讀取 MLB \/ MiLB 資料…<\/div>';const results/);
 });
 
-test('manual LINE tests are clearly labeled and share production sender',async()=>{
-  const sender=await read('scripts/send-line-update.mjs');const data=await read('scripts/shared-tracker-data.mjs');const workflow=await read('.github/workflows/line-daily-updates.yml');
-  assert.match(data,/🧪 TEST — Taiwan MLB Tracker/);assert.match(sender,/shared-tracker-data\.mjs/);assert.match(sender,/Manual test does not modify the production snapshot/);assert.match(sender,/collectSnapshot\(\{previous\}\)/);assert.match(workflow,/Restore the last successful tracker snapshot/);
+test('manual fallback and Cloudflare deployment tests are clearly labeled',async()=>{
+  const sender=await read('scripts/send-line-update.mjs');const data=await read('scripts/shared-tracker-data.mjs');const workflow=await read('.github/workflows/line-daily-updates.yml');const worker=await read('cloudflare/observation-worker.js');
+  assert.match(data,/🧪 TEST — Taiwan MLB Tracker/);
+  assert.match(sender,/shared-tracker-data\.mjs/);
+  assert.match(sender,/Manual test does not modify the production snapshot/);
+  assert.match(workflow,/--test/);
+  assert.match(worker,/🧪 CLOUDFLARE TEST — Taiwan MLB Tracker/);
+  assert.match(worker,/DEPLOY_TEST_TOKEN/);
 });
 
-test('dashboard and LINE use the same Cloudflare observation API with setup fallback',async()=>{
-  const app=await read('app.js');const lineData=await read('scripts/shared-tracker-data.mjs');const lineWorkflow=await read('.github/workflows/line-daily-updates.yml');
-  assert.match(app,/OBSERVATION_API_URL/);assert.match(app,/\/players/);assert.match(lineData,/OBSERVATION_API_URL/);assert.match(lineData,/\/players/);assert.match(lineWorkflow,/OBSERVATION_API_URL/);assert.match(app,/tracked-players\.json/);assert.match(lineData,/tracked-players\.json/);
+test('dashboard and Cloudflare LINE share the same KV-backed observation list',async()=>{
+  const app=await read('app.js');const worker=await read('cloudflare/observation-worker.js');const deploy=await read('.github/workflows/deploy-observation-worker.yml');
+  assert.match(app,/OBSERVATION_API_URL/);assert.match(app,/\/players/);
+  assert.match(worker,/const KEY = 'players'/);assert.match(worker,/OBSERVATION_LIST\.get\(KEY/);assert.match(worker,/OBSERVATION_LIST\.put\(KEY/);
+  assert.match(deploy,/binding = "OBSERVATION_LIST"/);
+  assert.match(app,/tracked-players\.json/);
 });
 
 test('watchlist UI stays in-site and applies generic mutation responses directly',async()=>{
@@ -99,7 +118,7 @@ test('Cloudflare Worker uses generic idempotent add/delete without one-player mi
   const worker=await read('cloudflare/observation-worker.js');const deploy=await read('.github/workflows/deploy-observation-worker.yml');
   assert.match(worker,/OWNER_KEY_SHA256/);assert.match(worker,/Bearer /);assert.match(worker,/\/owner\/verify/);
   assert.doesNotMatch(worker,/TRUSTED_ORIGINS\.has\(origin\)\) return true/);
-  assert.match(worker,/request\.method === 'POST'/);assert.match(worker,/request\.method==='DELETE'/);assert.match(worker,/env\.OBSERVATION_LIST\.put/);assert.match(worker,/mlbPlayer\(id\)/);
+  assert.match(worker,/request\.method==='POST'/);assert.match(worker,/request\.method==='DELETE'/);assert.match(worker,/env\.OBSERVATION_LIST\.put/);assert.match(worker,/mlbPlayer\(id\)/);
   assert.match(worker,/alreadyTracked:true/);assert.match(worker,/alreadyRemoved:true/);
   assert.doesNotMatch(worker,/MIGRATION_KEY/);assert.doesNotMatch(worker,/migration:2026/);
   assert.match(deploy,/taiwan-mlb-observation-list/);assert.match(deploy,/binding = "OBSERVATION_LIST"/);
