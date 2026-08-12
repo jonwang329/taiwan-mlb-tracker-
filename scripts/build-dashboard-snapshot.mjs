@@ -3,6 +3,7 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 const API='https://statsapi.mlb.com/api/v1';
 const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新人聯盟']];
 const MAX_MLB_REQUESTS=8;
+const BASEBALL_DAY_CUTOFF_HOURS=6;
 const OUTPUT_URL=new URL('../data/dashboard-snapshot.js',import.meta.url);
 const FALLBACK_URL=new URL('../tracked-players.json',import.meta.url);
 let activeMlbRequests=0;
@@ -10,7 +11,7 @@ const waitingMlbRequests=[];
 
 const num=v=>Number(v||0);
 const day=v=>String(v||'').slice(0,10);
-const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const gameDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()-BASEBALL_DAY_CUTOFF_HOURS*60*60*1000));
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
