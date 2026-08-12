@@ -18,6 +18,7 @@ jobs:
           node-version: 22
       - name: JavaScript syntax checks
         run: |
+          node --check taiwan-game-time.js
           node --check app.js
           node --check snapshot-bootstrap.js
           node --check mlb-fetch-guard.js
@@ -27,4 +28,4 @@ jobs:
           node --check scripts/shared-tracker-data.mjs
           node --check scripts/manage-watchlist.mjs
       - name: Automation tests
-        run: node --test scripts/automation.test.mjs scripts/dashboard-snapshot.test.mjs
+        run: node --test scripts/automation.test.mjs scripts/dashboard-snapshot.test.mjs scripts/taiwan-game-time.test.mjs
