@@ -8,6 +8,7 @@ on:
     paths:
       - 'cloudflare/observation-worker.js'
       - 'cloudflare/line-worker.js'
+      - 'cloudflare/line-worker-single-cron.js'
       - '.github/workflows/deploy-observation-worker.yml'
       - 'tracked-players.json'
 
@@ -64,9 +65,21 @@ jobs:
           id = "$namespace_id"
           EOF
 
+          cat > wrangler.line-clear.toml <<EOF
+          name = "taiwan-mlb-line-notifier"
+          main = "cloudflare/line-worker-single-cron.js"
+          compatibility_date = "2026-08-12"
+          account_id = "$CLOUDFLARE_ACCOUNT_ID"
+          workers_dev = true
+
+          [[kv_namespaces]]
+          binding = "OBSERVATION_LIST"
+          id = "$namespace_id"
+          EOF
+
           cat > wrangler.line.toml <<EOF
           name = "taiwan-mlb-line-notifier"
-          main = "cloudflare/line-worker.js"
+          main = "cloudflare/line-worker-single-cron.js"
           compatibility_date = "2026-08-12"
           account_id = "$CLOUDFLARE_ACCOUNT_ID"
           workers_dev = true
@@ -76,10 +89,12 @@ jobs:
           id = "$namespace_id"
 
           [triggers]
-          crons = ["0 23 * * *", "0 0 * * *", "0 1 * * *", "0 4 * * *"]
+          crons = ["0 0,1,4,23 * * *"]
           EOF
 
           npx wrangler deploy --config wrangler.observation.toml
+          npx wrangler deploy --config wrangler.line-clear.toml
+          sleep 2
           npx wrangler deploy --config wrangler.line.toml
       - name: Install LINE secrets in notifier Worker
         env:
@@ -154,4 +169,4 @@ jobs:
         run: |
           curl -fsS "$OBSERVATION_URL/players" | jq -e '.players | length > 0'
           echo "Observation API: $OBSERVATION_URL"
-          echo "LINE scheduler: dedicated Cloudflare notifier at 07:00, 08:00, 09:00, 12:00 Asia/Taipei"
+          echo "LINE scheduler: one Cloudflare cron covering 07:00, 08:00, 09:00, 12:00 Asia/Taipei"
