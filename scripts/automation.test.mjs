@@ -34,7 +34,7 @@ test('in-progress and same-day player data stay fresh',async()=>{
   assert.match(data,/liveSource/);
   assert.match(data,/candidateTeamIds/);
   assert.match(data,/latest\?\.team\?\.id/);
-  assert.match(app,/fetchLiveToday/);
+  assert.match(app,/fetchOfficialToday/);
   assert.match(app,/games\.slice\(0,5\)\.map\(g=>g\.team\?\.id\)/);
   assert.match(app,/slice\(0,4\)/);
   assert.match(app,/stableJson\(`\$\{base\}&stats=season`\),freshJson\(`\$\{base\}&stats=gameLog`\)/);
@@ -57,7 +57,8 @@ test('dashboard bounds MLB requests and keeps last-good data on refresh failure'
   assert.match(app,/restoreSnapshot/);
   assert.match(app,/lastResults\.length/);
   assert.match(app,/sig!==lastSignature/);
-  assert.match(app,/更新失敗 · 顯示上次成功資料/);
+  assert.match(app,/MLB API 暫時無法更新 · 上次成功/);
+  assert.match(app,/Promise\.allSettled/);
   assert.match(app,/window\.applyTrackedPlayers/);
   assert.doesNotMatch(app,/summary\.innerHTML='<div class="loading">正在讀取 MLB \/ MiLB 資料…<\/div>';const results/);
 });
