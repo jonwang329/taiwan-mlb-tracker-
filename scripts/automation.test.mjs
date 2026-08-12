@@ -17,12 +17,16 @@ test('LINE retries are deduplicated and no-change slots still notify',async()=>{
 });
 
 test('in-progress player data uses live boxscore instead of waiting for gameLog',async()=>{
-  const data=await read('scripts/shared-tracker-data.mjs');
+  const data=await read('scripts/shared-tracker-data.mjs');const app=await read('app.js');
   assert.match(data,/\/game\/\$\{scheduled\.gamePk\}\/boxscore/);
   assert.match(data,/plateAppearances/);
   assert.match(data,/liveBoxscoreAppearance/);
   assert.match(data,/cache:"no-store"/);
   assert.match(data,/liveSource/);
+  assert.match(app,/fetchLiveToday/);
+  assert.match(app,/\/game\/\$\{g\.gamePk\}\/boxscore/);
+  assert.match(app,/plateAppearances/);
+  assert.match(app,/LIVE · 已出賽/);
 });
 
 test('manual LINE tests are clearly labeled and share production sender',async()=>{
