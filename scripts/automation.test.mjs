@@ -16,6 +16,15 @@ test('LINE retries are deduplicated and no-change slots still notify',async()=>{
   assert.match(sender,/_deliveries/);assert.match(sender,/alreadyDelivered/);assert.match(sender,/retry suppressed/);assert.match(sender,/No new player changes since the previous update/);
 });
 
+test('in-progress player data uses live boxscore instead of waiting for gameLog',async()=>{
+  const data=await read('scripts/shared-tracker-data.mjs');
+  assert.match(data,/\/game\/\$\{scheduled\.gamePk\}\/boxscore/);
+  assert.match(data,/plateAppearances/);
+  assert.match(data,/liveBoxscoreAppearance/);
+  assert.match(data,/cache:"no-store"/);
+  assert.match(data,/liveSource/);
+});
+
 test('manual LINE tests are clearly labeled and share production sender',async()=>{
   const sender=await read('scripts/send-line-update.mjs');const data=await read('scripts/shared-tracker-data.mjs');
   assert.match(data,/🧪 TEST — Taiwan MLB Tracker/);assert.match(sender,/shared-tracker-data\.mjs/);assert.match(sender,/Manual test does not modify the production snapshot/);
