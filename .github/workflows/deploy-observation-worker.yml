@@ -82,16 +82,40 @@ jobs:
         run: |
           url="https://taiwan-mlb-observation-list.jonwang329.workers.dev"
           echo "url=$url" >> "$GITHUB_OUTPUT"
-          health=$(curl -fsS "$url/health")
-          echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true'
+          health=""
+          for attempt in $(seq 1 15); do
+            health=$(curl -fsS "$url/health" || true)
+            if echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true' >/dev/null 2>&1; then
+              echo "Cloudflare Worker health ready on attempt $attempt"
+              echo "$health" | jq '{ok,lineScheduler,lineConfigured,cronTimezone}'
+              exit 0
+            fi
+            echo "Worker version/secrets not ready yet (attempt $attempt/15)"
+            sleep 2
+          done
+          echo "::error::Cloudflare Worker did not report LINE readiness after retries"
+          echo "$health" | jq '{ok,lineScheduler,lineConfigured,cronTimezone}' 2>/dev/null || true
+          exit 1
       - name: Send Cloudflare to LINE deployment test
         env:
           URL: ${{ steps.worker.outputs.url }}
           DEPLOY_TEST_TOKEN: ${{ github.token }}
         run: |
-          result=$(curl --fail-with-body --max-time 150 -sS -X POST "$URL/internal/line-test" -H "Authorization: Bearer $DEPLOY_TEST_TOKEN")
-          echo "$result" | jq -e '.ok == true and .lineStatus == 200'
-          echo "Cloudflare -> LINE test succeeded"
+          result=""
+          for attempt in $(seq 1 5); do
+            if result=$(curl --fail-with-body --max-time 150 -sS -X POST "$URL/internal/line-test" -H "Authorization: Bearer $DEPLOY_TEST_TOKEN"); then
+              if echo "$result" | jq -e '.ok == true and .lineStatus == 200' >/dev/null 2>&1; then
+                echo "$result" | jq '{ok,lineStatus,date,players,active}'
+                echo "Cloudflare -> LINE test succeeded"
+                exit 0
+              fi
+            fi
+            echo "Cloudflare -> LINE test not ready (attempt $attempt/5)"
+            sleep 2
+          done
+          echo "::error::Cloudflare -> LINE deployment test failed"
+          echo "$result" | jq '{ok,error,lineStatus,date,players,active}' 2>/dev/null || true
+          exit 1
       - name: Configure dashboard and automation API URL
         env:
           URL: ${{ steps.worker.outputs.url }}
