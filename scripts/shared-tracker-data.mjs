@@ -46,19 +46,6 @@ function seasonLine(group, stat = {}) {
     ? `ERA ${stat.era ?? "—"}, WHIP ${stat.whip ?? "—"}, ${stat.inningsPitched ?? 0} IP, ${stat.strikeOuts ?? 0} K`
     : `AVG ${stat.avg ?? "—"}, OBP ${stat.obp ?? "—"}, OPS ${stat.ops ?? "—"}, ${stat.homeRuns ?? 0} HR, ${stat.rbi ?? 0} RBI`;
 }
-function insight(player, game, season = {}) {
-  if (!game) return "台灣今日尚無出賽；持續關注下一場出賽機會。";
-  const stat = game.stat || {};
-  if (player.group === "pitching") {
-    const ip = number(stat.inningsPitched), strikeouts = number(stat.strikeOuts), earned = number(stat.earnedRuns);
-    if (ip >= 5 && earned <= 2) return "有效壓低失分並吃下局數，是一場具品質的投球內容。";
-    if (strikeouts >= 4) return "三振能力有展現，後續可留意保送與用球效率。";
-    return `本場局數與控球是觀察重點；球季 ERA 為 ${season.era ?? "—"}。`;
-  }
-  if (number(stat.homeRuns)) return "長打火力直接轉化為得分貢獻，近期打擊狀態值得關注。";
-  if (number(stat.hits) >= 2) return "單場多安顯示擊球狀態不錯，可留意能否延續上壘表現。";
-  return `本場結果之外，可搭配球季 OPS ${season.ops ?? "—"} 觀察整體進攻貢獻。`;
-}
 export function statusLabel(status = {}) {
   const detail = status.detailedState || "Status unavailable";
   const state = status.abstractGameState;
@@ -110,7 +97,7 @@ async function officialBoxscoreAppearance(player, games, fetcher) {
 async function playerSnapshot(player, reportDate, now, fetcher) {
   const season = Number(reportDate.slice(0,4));
   const [personResult, ...levelResults] = await Promise.allSettled([
-    json(`${MLB_API}/people/${player.id}?hydrate=currentTeam,transactions`, fetcher),
+    json(`${MLB_API}/people/${player.id}?hydrate=currentTeam`, fetcher),
     ...levels.map(level => levelData(player, level, season, fetcher)),
   ]);
   const available = levelResults.filter(r => r.status === "fulfilled").map(r => r.value);
@@ -119,7 +106,6 @@ async function playerSnapshot(player, reportDate, now, fetcher) {
   const latest = games[0] || null;
   const currentLevel = available.find(item => item.level === latest?.level) || available.find(item => item.season) || {};
   const person = personResult.status === "fulfilled" ? personResult.value.people?.[0] || {} : {};
-  const transaction = [...(person.transactions || [])].sort((a,b) => new Date(b.date)-new Date(a.date))[0];
   const team = latest?.team?.name || person.currentTeam?.name || player.org;
   const status = person.rosterStatus?.description || person.rosterStatus || (team ? `Rostered with ${team}` : "Roster status not provided by MLB");
   const candidateTeamIds = [...new Set([latest?.team?.id, ...games.slice(0,5).map(game => game.team?.id), person.currentTeam?.id].filter(Boolean))];
@@ -132,9 +118,8 @@ async function playerSnapshot(player, reportDate, now, fetcher) {
   const played = Boolean(effectiveStat);
   const currentGame = appearance?.scheduled || [...scheduledGames].sort((a,b) => schedulePriority(a)-schedulePriority(b))[0] || null;
   const currentGameStatus = currentGame?.status ? statusLabel(currentGame.status) : "NO GAME — no Taiwan-today game returned by MLB schedule";
-  const effectiveGame = effectiveStat ? { stat: effectiveStat } : null;
   const taiwanGameDate=played&&currentGame?gameTaiwanDate(currentGame):"";
-  return { id:player.id, name:player.name, group:player.group, team, status, played, gameDate:taiwanGameDate, level:appearance ? currentLevel.level || latest?.level || "—" : latest?.level || "—", gameStatus:currentGameStatus, performance:effectiveStat ? performance(player.group, effectiveStat) : "Did not play", season:seasonLine(player.group, currentLevel.season), news:transaction ? `${dateOnly(transaction.date)} ${transaction.description || transaction.typeDesc}` : "No recent status change reported", insight:insight(player, effectiveGame, currentLevel.season), latestGameDate:played ? taiwanGameDate : dateOnly(latest?.date), liveSource:Boolean(appearance&&currentGame?.status?.abstractGameState==='Live') };
+  return { id:player.id, name:player.name, group:player.group, team, status, played, gameDate:taiwanGameDate, level:appearance ? currentLevel.level || latest?.level || "—" : latest?.level || "—", gameStatus:currentGameStatus, performance:effectiveStat ? performance(player.group, effectiveStat) : "Did not play", season:seasonLine(player.group, currentLevel.season), latestGameDate:played ? taiwanGameDate : dateOnly(latest?.date), liveSource:Boolean(appearance&&currentGame?.status?.abstractGameState==='Live') };
 }
 export async function collectSnapshot({date=taiwanDate(), now=new Date(), fetcher=fetch, previous=null} = {}) {
   const trackedPlayers=await loadObservationPlayers(fetcher);
@@ -149,21 +134,31 @@ export async function collectSnapshot({date=taiwanDate(), now=new Date(), fetche
   });
   return {date, gameDate:date, scheduleWindow:scheduleQueryWindow(now), generatedAt:new Date().toISOString(), stalePlayers, players:resolved};
 }
+function linePlayerComparable(player) {
+  if(!player?.played) return {id:player?.id,played:false};
+  return {id:player.id,played:true,team:player.team,level:player.level,gameDate:player.gameDate,gameStatus:player.gameStatus,performance:player.performance,season:player.season,liveSource:player.liveSource};
+}
 export function comparable(snapshot) {
-  return snapshot.players.map(({id,team,status,played,gameDate,gameStatus,performance,season,news,latestGameDate,liveSource}) => ({id,team,status,played,gameDate,gameStatus,performance,season,news,latestGameDate,liveSource}));
+  return snapshot.players.map(linePlayerComparable);
 }
 export function hasChanges(previous, current) { return Boolean(previous) && JSON.stringify(comparable(previous)) !== JSON.stringify(comparable(current)); }
+function todayPlayers(snapshot){ return (snapshot.players||[]).filter(player=>player.played && player.gameDate===snapshot.date); }
+function playerSection(player){
+  return [`\n【${player.name}｜${player.team}】`,`比賽：${player.gameStatus}`,`本場：${player.performance}（${player.level}${player.liveSource ? "・LIVE" : ""}）`,`球季：${player.season}`].join("\n");
+}
 export function formatSummary(snapshot, period="final", test=false) {
   const title = period === "morning" ? "早安速報" : "午間日報";
   const prefix = test ? "🧪 TEST — Taiwan MLB Tracker" : `🇹🇼⚾ Taiwan MLB Tracker｜${snapshot.date} ${title}`;
   const fallbackNote=snapshot.stalePlayers?`\n⚠️ ${snapshot.stalePlayers} 位球員沿用上次成功的官方資料`:'';
-  const header = `${prefix}\n台灣日期：${snapshot.date}（依 MLB gameDate 換算）${fallbackNote}`;
-  const sections = snapshot.players.map(player => [`\n【${player.name}｜${player.team}】`,`比賽：${player.gameStatus}`,`出賽：${player.played ? "有" : "無"}｜球員狀態：${player.status}`,`本場：${player.performance}${player.played ? `（${player.level}${player.liveSource ? "・LIVE" : ""}）` : ""}`,`球季：${player.season}`,`動態：${player.news}`,`觀察：${player.insight}`].join("\n"));
-  return [header, ...sections].join("\n");
+  const active=todayPlayers(snapshot);
+  const header = `${prefix}\n台灣日期：${snapshot.date}（依 MLB gameDate 換算）\n今日出賽：${active.length} 位${fallbackNote}`;
+  if(!active.length)return `${header}\n\n目前沒有追蹤球員在台灣今天出賽。`;
+  return [header, ...active.map(playerSection)].join("\n");
 }
 export function formatChanges(previous, current, test=false) {
-  const before = new Map(previous.players.map(player => [player.id, JSON.stringify(comparable({players:[player]})[0])]));
-  const changed = current.players.filter(player => before.get(player.id) !== JSON.stringify(comparable({players:[player]})[0]));
-  const header = test ? "🧪 TEST — Taiwan MLB Tracker\n資料更新測試" : `🇹🇼⚾ Taiwan MLB Tracker｜${current.date} 資料更新`;
-  return [header, ...changed.map(player => `\n【${player.name}】\n比賽：${player.gameStatus}${player.played ? `\n本場：${player.performance}${player.liveSource ? "（LIVE）" : ""}\n球季：${player.season}` : `\n球員狀態：${player.status}｜最新比賽 ${player.latestGameDate || "—"}`}\n動態：${player.news}\n觀察：${player.insight}`)].join("\n");
+  const before = new Map((previous?.players||[]).map(player => [player.id, JSON.stringify(linePlayerComparable(player))]));
+  const changed = todayPlayers(current).filter(player => before.get(player.id) !== JSON.stringify(linePlayerComparable(player)));
+  const header = test ? "🧪 TEST — Taiwan MLB Tracker\n今日出賽更新測試" : `🇹🇼⚾ Taiwan MLB Tracker｜${current.date} 今日出賽更新`;
+  if(!changed.length)return `${header}\n目前沒有新的今日出賽變化。`;
+  return [header, ...changed.map(playerSection)].join("\n");
 }
