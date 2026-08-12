@@ -1,8 +1,6 @@
 const KEY = 'players';
-const MIGRATION_KEY = 'migration:2026-08-12:add-829473';
 const OWNER_KEY_SHA256 = '3d917f84bd31e2c18597e0858262ba35af11a9fd12f050df4e514984f5a49941';
 const TRUSTED_ORIGINS = new Set(['https://jonwang329.github.io']);
-const HUANG = {id:829473,name:'黃仲翔 Chung-Hsiang Huang',role:'RHP',org:'Arizona Diamondbacks',group:'pitching'};
 const DEFAULT_PLAYERS = [
   {id:701678,name:'李灝宇 Hao-Yu Lee',role:'2B',org:'Detroit Tigers',group:'hitting'},
   {id:691907,name:'鄭宗哲 Tsung-Che Cheng',role:'SS',org:'Boston Red Sox',group:'hitting'},
@@ -13,7 +11,7 @@ const DEFAULT_PLAYERS = [
   {id:813820,name:'林振瑋 Chen-Wei Lin',role:'RHP',org:'St. Louis Cardinals',group:'pitching'},
   {id:800018,name:'莊陳仲敖 Chen Zhong-Ao Zhuang',role:'RHP',org:'Athletics',group:'pitching'},
   {id:808486,name:'李晨薰 Chen-Hsun Lee',role:'RHP',org:'San Francisco Giants',group:'pitching'},
-  HUANG
+  {id:829473,name:'黃仲翔 Chung-Hsiang Huang',role:'RHP',org:'Arizona Diamondbacks',group:'pitching'}
 ];
 
 function cors(request){
@@ -32,14 +30,6 @@ async function readPlayers(env){
   if (!Array.isArray(players)) {
     players = DEFAULT_PLAYERS;
     await env.OBSERVATION_LIST.put(KEY, JSON.stringify(players));
-  }
-  const migrated = await env.OBSERVATION_LIST.get(MIGRATION_KEY);
-  if (!migrated) {
-    if (!players.some(player => Number(player.id) === HUANG.id)) {
-      players = [...players, HUANG];
-      await env.OBSERVATION_LIST.put(KEY, JSON.stringify(players));
-    }
-    await env.OBSERVATION_LIST.put(MIGRATION_KEY, new Date().toISOString());
   }
   return players;
 }
@@ -83,7 +73,8 @@ export default {
       const id=Number(body?.id);
       if(!Number.isInteger(id)||id<=0)return json(request,{error:'invalid player id'},400);
       const players=await readPlayers(env);
-      if(players.some(p=>Number(p.id)===id))return json(request,{error:'already tracked'},409);
+      const existing=players.find(p=>Number(p.id)===id);
+      if(existing)return json(request,{ok:true,alreadyTracked:true,player:existing,players});
       const player=await mlbPlayer(id);
       if(!player)return json(request,{error:'MLB player not found'},404);
       const next=[...players,player];
@@ -95,7 +86,7 @@ export default {
       const id=Number(match[1]);
       const players=await readPlayers(env);
       const next=players.filter(p=>Number(p.id)!==id);
-      if(next.length===players.length)return json(request,{error:'not tracked'},404);
+      if(next.length===players.length)return json(request,{ok:true,alreadyRemoved:true,players});
       await env.OBSERVATION_LIST.put(KEY,JSON.stringify(next));
       return json(request,{ok:true,players:next});
     }
