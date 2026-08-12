@@ -1,0 +1,116 @@
+@media (min-width: 901px) {
+  main {
+    display: grid;
+    grid-template-columns: minmax(360px, 0.78fr) minmax(0, 1.72fr);
+    grid-template-areas:
+      "score score"
+      "summary details";
+    column-gap: 20px;
+    row-gap: 18px;
+    align-items: start;
+  }
+
+  .scoreboard {
+    grid-area: score;
+  }
+
+  .summary-section {
+    grid-area: summary;
+    min-width: 0;
+    position: sticky;
+    top: 82px;
+    align-self: start;
+    max-height: calc(100vh - 100px);
+    overflow: auto;
+  }
+
+  .details-section {
+    grid-area: details;
+    min-width: 0;
+  }
+
+  .summary-section .section-title,
+  .details-section .section-title {
+    margin-top: 0;
+  }
+
+  .summary-list {
+    min-width: 0;
+  }
+
+  .column-labels,
+  .summary-row {
+    grid-template-columns: minmax(92px, 0.95fr) minmax(72px, 0.8fr) minmax(0, 1.35fr) 40px 40px;
+  }
+
+  .column-labels {
+    padding: 5px 24px 5px 8px;
+  }
+
+  .summary-row {
+    padding: 5px 24px 5px 8px;
+  }
+
+  .summary-row > span {
+    min-width: 0;
+    padding-right: 5px;
+  }
+
+  .summary-player strong {
+    font-size: 13px;
+  }
+
+  .summary-player small,
+  .summary-club small {
+    font-size: 9px;
+  }
+
+  .summary-club b,
+  .summary-today {
+    font-size: 9px;
+  }
+
+  .summary-stat b {
+    font-size: 12px;
+  }
+
+  .summary-row > i {
+    right: 7px;
+  }
+
+  .details-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .player-detail > header {
+    gap: 12px;
+    padding: 12px 14px;
+  }
+
+  .photo {
+    flex-basis: 96px;
+    width: 96px;
+    height: 116px;
+  }
+
+  .player-detail h3 {
+    font-size: 22px;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1180px) {
+  main {
+    grid-template-columns: minmax(400px, 0.82fr) minmax(0, 1.68fr);
+  }
+
+  .photo {
+    flex-basis: 108px;
+    width: 108px;
+    height: 126px;
+  }
+}
