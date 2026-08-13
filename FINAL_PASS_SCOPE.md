@@ -1,1 +1,0 @@
-Final pass scope: shared player identities, persistent 今日重點 label, all-player LIVE PULSE ticker.
