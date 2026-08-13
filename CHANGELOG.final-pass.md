@@ -1,1 +1,0 @@
-Temporary review note for final UI pass: shared player identities, persistent Chinese 今日重點 label, and all-player LIVE PULSE ticker. Remove in a later cleanup if desired.
