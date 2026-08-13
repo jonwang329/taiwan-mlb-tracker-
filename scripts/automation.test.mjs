@@ -103,12 +103,12 @@ test('dashboard and Cloudflare LINE share the same KV-backed observation list',a
   assert.match(app,/tracked-players\.json/);
 });
 
-test('watchlist UI stays in-site and applies generic mutation responses directly',async()=>{
+test('watchlist UI stays in-site and uses the Owner Password for generic mutations',async()=>{
   const manager=await read('watchlist-manager.js');
   assert.match(manager,/method:action==='add'\?'POST':'DELETE'/);
-  assert.match(manager,/Authorization:`Bearer \$\{key\}`/);
+  assert.match(manager,/Authorization:`Bearer \$\{password\}`/);
   assert.match(manager,/\/owner\/verify/);
-  assert.match(manager,/sessionStorage/);
+  assert.match(manager,/OWNER_SESSION='twmlb_owner_password_session'/);
   assert.match(manager,/data-watch-action="add"/);
   assert.match(manager,/data-watch-action="remove"/);
   assert.match(manager,/window\.applyTrackedPlayers/);
@@ -128,8 +128,16 @@ test('Cloudflare Worker uses generic idempotent add/delete without one-player mi
   assert.match(deploy,/taiwan-mlb-observation-list/);assert.match(deploy,/binding = "OBSERVATION_LIST"/);
 });
 
-test('prospect search falls back across MLB and MiLB sport directories',async()=>{
-  const manager=await read('watchlist-manager.js');assert.match(manager,/SPORT_IDS=\[1,11,12,13,14,16\]/);assert.match(manager,/sports\/\$\{id\}\/players\?season=/);assert.match(manager,/people\/search\?names=/);assert.match(manager,/people\/\$\{q\}\?hydrate=currentTeam/);assert.doesNotMatch(manager,/people\/search\?names=\$\{encodeURIComponent\(name\)\}&hydrate=/);
+test('Manage search converts Chinese to canonical English and returns active current-team profiles only',async()=>{
+  const manager=await read('watchlist-manager.js');
+  assert.match(manager,/zh:'張弘稜',en:'Hung-Leng Chang'/);
+  assert.match(manager,/zh:'蘇嵐鴻',en:'Lan-Hong Su'/);
+  assert.match(manager,/catalogMatch\(q\)/);
+  assert.match(manager,/base=known\?known\.en:q\.trim\(\)/);
+  assert.match(manager,/people\/search\?names=\$\{encodeURIComponent\(name\)\}&hydrate=currentTeam/);
+  assert.match(manager,/p\.currentTeam\?\.id/);
+  assert.doesNotMatch(manager,/SPORT_IDS/);
+  assert.doesNotMatch(manager,/sports\/\$\{id\}\/players\?season=/);
 });
 
 test('official Single-A directory contains Lan-Hong Su prospect ID 837088',async()=>{
