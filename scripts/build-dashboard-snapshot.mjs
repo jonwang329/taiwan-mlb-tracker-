@@ -156,6 +156,7 @@ function signature(snapshot){
 const trackedPlayers=await loadTrackedPlayers();
 const previous=await readPrevious();
 const previousById=new Map((previous?.players||[]).map((player,index)=>[Number(player.id),previous.results?.[index]]));
+const snapshotPlayers=[];
 const results=[];
 for(const player of trackedPlayers){
   let result=null;
@@ -164,14 +165,20 @@ for(const player of trackedPlayers){
     if(meaningful(fresh))result=fresh;
   }catch(error){console.warn(`[snapshot] Player refresh failed for ${player.name}: ${error.message}`);}
   if(!result)result=previousById.get(Number(player.id))||null;
-  if(!result)throw new Error(`No fresh or previous dashboard data is available for ${player.name}`);
+  if(!result){
+    console.warn(`[snapshot] Skipping ${player.name}: no fresh or previous dashboard data is available`);
+    continue;
+  }
+  snapshotPlayers.push(player);
   results.push(result);
 }
-const next={savedAt:Date.now(),players:trackedPlayers,results};
+if(!snapshotPlayers.length)throw new Error('No valid dashboard players are available; refusing to replace the last-good snapshot');
+const next={savedAt:Date.now(),players:snapshotPlayers,results};
 if(previous&&signature(previous)===signature(next)){
   console.log('[snapshot] No player data changes; keeping existing central snapshot.');
   process.exit(0);
 }
 await mkdir(new URL('../data/',import.meta.url),{recursive:true});
 await writeFile(OUTPUT_URL,`window.CENTRAL_DASHBOARD_SNAPSHOT=${JSON.stringify(next)};\n`,'utf8');
-console.log(`[snapshot] Updated central snapshot for ${trackedPlayers.length} players from official MLB / MiLB data.`);
+const skipped=trackedPlayers.length-snapshotPlayers.length;
+console.log(`[snapshot] Updated central snapshot for ${snapshotPlayers.length} valid players from official MLB / MiLB data${skipped?`; skipped ${skipped} invalid/unavailable player(s)`:''}.`);
