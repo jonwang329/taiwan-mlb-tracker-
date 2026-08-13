@@ -22,6 +22,8 @@ jobs:
           node --check app.js
           node --check snapshot-bootstrap.js
           node --check mlb-fetch-guard.js
+          node --check player-identities.js
+          node --check observation-name-adapter.js
           node --check watchlist-fast-feedback.js
           node --check watchlist-manager.js
           node --check today-highlight.js
