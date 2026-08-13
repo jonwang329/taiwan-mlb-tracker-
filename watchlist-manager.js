@@ -29,7 +29,7 @@ function apiUrl(){return String(window.OBSERVATION_API_URL||'').replace(/\/$/,''
 function ownerPassword(){return sessionStorage.getItem(OWNER_SESSION)||'';}
 function setOwnerPassword(value){if(value)sessionStorage.setItem(OWNER_SESSION,value);else sessionStorage.removeItem(OWNER_SESSION);}
 function normalize(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[-_'’.]/g,' ').replace(/[^a-z0-9\u3400-\u9fff ]/g,' ').replace(/\s+/g,' ').trim();}
-function catalogMatch(q){const n=normalize(q);return TAIWAN_PLAYER_CATALOG.find(p=>n===normalize(p.zh)||n===normalize(p.en)||normalize(p.en).includes(n));}
+function catalogMatch(q){const n=normalize(q);return TAIWAN_PLAYER_CATALOG.find(p=>n===normalize(p.zh)||n===normalize(p.en));}
 function displayName(player){const known=CATALOG_BY_ID.get(Number(player?.id));return known?`${known.zh} ${known.en}`:player?.name||player?.fullName||'Unknown player';}
 function normalizeNames(list){return Array.isArray(list)?list.map(p=>{const known=CATALOG_BY_ID.get(Number(p.id));return known?{...p,name:`${known.zh} ${known.en}`}:p;}):list;}
 function ensureUnlockUI(){
