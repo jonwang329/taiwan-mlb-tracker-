@@ -22,6 +22,8 @@ jobs:
           node --check app.js
           node --check snapshot-bootstrap.js
           node --check mlb-fetch-guard.js
+          node --check player-identities.js
+          node --check observation-name-adapter.js
           node --check watchlist-fast-feedback.js
           node --check watchlist-manager.js
           node --check today-highlight.js
@@ -34,4 +36,4 @@ jobs:
           node --check scripts/shared-tracker-data.mjs
           node --check scripts/manage-watchlist.mjs
       - name: Automation tests
-        run: node --test scripts/automation.test.mjs scripts/dashboard-snapshot.test.mjs scripts/taiwan-game-time.test.mjs scripts/schedule-query.test.mjs scripts/line-content.test.mjs
+        run: node --test scripts/automation.test.mjs scripts/dashboard-snapshot.test.mjs scripts/taiwan-game-time.test.mjs scripts/schedule-query.test.mjs scripts/line-content.test.mjs scripts/player-identities.test.mjs
