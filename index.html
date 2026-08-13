@@ -44,12 +44,12 @@
   <div id="watchlist-modal" class="watchlist-modal" hidden>
     <section class="watchlist-sheet" role="dialog" aria-modal="true" aria-labelledby="watchlist-title">
       <header><div><span>OBSERVATION LIST</span><h2 id="watchlist-title">管理觀察名單</h2><p>只有 Owner 可以加入或移除；其他訪客只能查看。</p></div><button id="watchlist-close" type="button" aria-label="關閉">×</button></header>
-      <form id="player-search-form" class="player-search-box" role="search"><span>⌕</span><input id="player-search" type="search" autocomplete="off" enterkeyhint="search" placeholder="輸入英文姓名，例如 Yu-Min Lin" aria-label="搜尋 MLB 或 MiLB 球員"><button id="player-search-button" type="submit">搜尋</button></form>
+      <form id="player-search-form" class="player-search-box" role="search"><span>⌕</span><input id="player-search" type="search" autocomplete="off" enterkeyhint="search" placeholder="輸入中文、英文姓名或 MLB ID" aria-label="搜尋 MLB 或 MiLB 現役球員"><button id="player-search-button" type="submit">搜尋</button></form>
       <p id="watchlist-status" class="watchlist-status" aria-live="polite"></p>
       <div id="player-search-results" class="player-search-results"></div>
       <div class="watchlist-divider"><span>目前追蹤</span></div>
       <div id="watchlist-current" class="watchlist-current"></div>
-      <p class="watchlist-note">所有操作都留在 Taiwan MLB Tracker 網站內；GitHub 與 Cloudflare 僅在後台運作。</p>
+      <p class="watchlist-note">中文或英文皆可輸入；中文會先轉成正確英文姓名再查 MLB / MiLB 官方資料，只顯示有 current team 的現役球員。</p>
     </section>
   </div>
 
@@ -59,7 +59,6 @@
   <script src="taiwan-game-time.js?v=20260812-taiwan-date"></script>
   <script src="mlb-fetch-guard.js?v=20260812-resilient-refresh"></script>
   <script src="app.js?v=20260812-taiwan-official-source"></script>
-  <script src="watchlist-manager.js?v=20260813-manage-speed"></script>
-  <script src="owner-password-ui.js?v=20260813-owner-password"></script>
+  <script src="watchlist-manager.js?v=20260813-manage-v2"></script>
 </body>
 </html>
