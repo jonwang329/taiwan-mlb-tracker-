@@ -128,16 +128,20 @@ test('Cloudflare Worker uses generic idempotent add/delete without one-player mi
   assert.match(deploy,/taiwan-mlb-observation-list/);assert.match(deploy,/binding = "OBSERVATION_LIST"/);
 });
 
-test('Manage search converts Chinese to canonical English and returns active current-team profiles only',async()=>{
-  const manager=await read('watchlist-manager.js');
-  assert.match(manager,/zh:'張弘稜',en:'Hung-Leng Chang'/);
-  assert.match(manager,/zh:'蘇嵐鴻',en:'Lan-Hong Su'/);
-  assert.match(manager,/catalogMatch\(q\)/);
-  assert.match(manager,/base=known\?known\.en:q\.trim\(\)/);
+test('Manage search is open across MLB and MiLB and Taiwan identities are enrichment only',async()=>{
+  const manager=await read('watchlist-manager.js');const identities=await read('player-identities.js');
+  assert.match(identities,/id:808207,zh:'潘文輝',en:'Wen-Hui Pan'/);
+  assert.match(identities,/zh:'賴謙凡',en:'Chien-Fan Lai'/);
+  assert.match(identities,/zh:'林珺希',en:'Chun-Hsi Lin'/);
+  assert.match(identities,/zh:'何樺',en:'Hua Ho'/);
+  assert.match(identities,/zh:'林睿杰',en:'Ruei-Chieh Lin'/);
+  assert.match(manager,/const SPORT_IDS=\[1,11,12,13,14,16\]/);
+  assert.match(manager,/sports\/\$\{id\}\/players\?season=\$\{season\}/);
+  assert.match(manager,/normalize\(p\.fullName\|\|p\.name\)\.includes\(n\)/);
+  assert.match(manager,/partialQuery/);
+  assert.match(manager,/directoryMatches\(q\)/);
   assert.match(manager,/people\/search\?names=\$\{encodeURIComponent\(name\)\}&hydrate=currentTeam/);
-  assert.match(manager,/p\.currentTeam\?\.id/);
-  assert.doesNotMatch(manager,/SPORT_IDS/);
-  assert.doesNotMatch(manager,/sports\/\$\{id\}\/players\?season=/);
+  assert.doesNotMatch(manager,/const TAIWAN_PLAYER_CATALOG=/);
 });
 
 test('official Single-A directory contains Lan-Hong Su prospect ID 837088',async()=>{
