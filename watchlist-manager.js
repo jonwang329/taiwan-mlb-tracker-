@@ -1,37 +1,25 @@
 (()=>{
-const style=document.createElement('link');style.rel='stylesheet';style.href='watchlist.css?v=20260813-manage-v2';document.head.appendChild(style);
+const style=document.createElement('link');style.rel='stylesheet';style.href='watchlist.css?v=20260813-manage-v3';document.head.appendChild(style);
 const API='https://statsapi.mlb.com/api/v1';
+const SPORT_IDS=[1,11,12,13,14,16];
 const OWNER_SESSION='twmlb_owner_password_session';
 const LEGACY_KEYS=['twmlb_owner_session_key','twmlb_owner_remembered_key'];
-const TAIWAN_PLAYER_CATALOG=[
-  {id:701678,zh:'李灝宇',en:'Hao-Yu Lee'},
-  {id:691907,zh:'鄭宗哲',en:'Tsung-Che Cheng'},
-  {id:678906,zh:'鄧愷威',en:'Kai-Wei Teng'},
-  {id:827734,zh:'林維恩',en:'Wei-En Lin'},
-  {id:801179,zh:'林昱珉',en:'Yu-Min Lin'},
-  {id:828667,zh:'柯敬賢',en:'Ching-Hsien Ko'},
-  {id:813820,zh:'林振瑋',en:'Chen-Wei Lin'},
-  {id:800018,zh:'莊陳仲敖',en:'Chen Zhong-Ao Zhuang'},
-  {id:808486,zh:'李晨薰',en:'Chen-Hsun Lee'},
-  {id:829473,zh:'黃仲翔',en:'Chung-Hsiang Huang'},
-  {id:837088,zh:'蘇嵐鴻',en:'Lan-Hong Su'},
-  {id:800213,zh:'張弘稜',en:'Hung-Leng Chang'}
-];
-const CATALOG_BY_ID=new Map(TAIWAN_PLAYER_CATALOG.map(p=>[p.id,p]));
 const searchCache=new Map();
+let directoryPromise=null;
 const photo=id=>`https://img.mlbstatic.com/mlb-photos/image/upload/w_160,q_auto:best,f_auto/v1/people/${id}/headshot/67/current`;
 const $=s=>document.querySelector(s);
 const modal=$('#watchlist-modal'),open=$('#manage-players-btn'),close=$('#watchlist-close'),form=$('#player-search-form'),input=$('#player-search'),searchButton=$('#player-search-button'),results=$('#player-search-results'),current=$('#watchlist-current'),status=$('#watchlist-status');
 const players=()=>window.trackedPlayers||[];
+const identities=()=>window.TaiwanPlayerIdentities||{};
 let mutationInFlight=false;
 for(const key of LEGACY_KEYS){try{sessionStorage.removeItem(key);localStorage.removeItem(key);}catch{}}
 function apiUrl(){return String(window.OBSERVATION_API_URL||'').replace(/\/$/,'');}
 function ownerPassword(){return sessionStorage.getItem(OWNER_SESSION)||'';}
 function setOwnerPassword(value){if(value)sessionStorage.setItem(OWNER_SESSION,value);else sessionStorage.removeItem(OWNER_SESSION);}
-function normalize(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[-_'’.]/g,' ').replace(/[^a-z0-9\u3400-\u9fff ]/g,' ').replace(/\s+/g,' ').trim();}
-function catalogMatch(q){const n=normalize(q);return TAIWAN_PLAYER_CATALOG.find(p=>n===normalize(p.zh)||n===normalize(p.en));}
-function displayName(player){const known=CATALOG_BY_ID.get(Number(player?.id));return known?`${known.zh} ${known.en}`:player?.name||player?.fullName||'Unknown player';}
-function normalizeNames(list){return Array.isArray(list)?list.map(p=>{const known=CATALOG_BY_ID.get(Number(p.id));return known?{...p,name:`${known.zh} ${known.en}`}:p;}):list;}
+function normalize(s){return identities().normalize?identities().normalize(s):String(s||'').toLowerCase().replace(/[-_'’.]/g,' ').replace(/\s+/g,' ').trim();}
+function catalogMatch(q){return identities().byName?identities().byName(q):null;}
+function displayName(player){return identities().label?identities().label(player):player?.name||player?.fullName||'Unknown player';}
+function normalizeNames(list){return identities().apply?identities().apply(list):list;}
 function ensureUnlockUI(){
   let box=$('#owner-unlock-box');if(box)return box;
   box=document.createElement('div');box.id='owner-unlock-box';box.className='owner-unlock-box';
@@ -72,16 +60,35 @@ results.addEventListener('click',e=>{const b=e.target.closest('[data-watch-actio
 let timer;input.addEventListener('input',()=>{clearTimeout(timer);const q=input.value.trim();results.innerHTML='';status.textContent=q.length&&q.length<2?'請至少輸入 2 個字元':'';if(q.length<2)return;timer=setTimeout(()=>search(q),220)});form.addEventListener('submit',e=>{e.preventDefault();clearTimeout(timer);search(input.value.trim())});
 async function fetchJson(url){const r=await fetch(url,{headers:{Accept:'application/json'},cache:'no-store'});if(!r.ok)throw Error(`MLB API ${r.status}`);return r.json();}
 async function enrich(id){const data=await fetchJson(`${API}/people/${id}?hydrate=currentTeam`);return data.people?.[0]||null;}
-function isActivePlayer(p){return Boolean(p&&p.active!==false&&p.currentTeam?.id);}
-function queryVariants(q){const known=catalogMatch(q),base=known?known.en:q.trim(),clean=normalize(base),parts=clean.split(' ').filter(Boolean),set=new Set([base,clean]);if(parts.length>1){set.add(parts.join('-'));set.add([...parts].reverse().join(' '));}return {known,variants:[...set].filter(Boolean)};}
+function isEligiblePlayer(p){return Boolean(p&&p.active!==false&&(p.currentTeam?.id||identities().identify?.(p)));}
+function queryVariants(q){const known=catalogMatch(q),base=known?.en||q.trim(),clean=normalize(base),parts=clean.split(' ').filter(Boolean),set=new Set([base,clean,...(known?.aliases||[])]);if(parts.length>1){set.add(parts.join('-'));set.add([...parts].reverse().join(' '));}return {known,variants:[...set].filter(Boolean)};}
+async function activeDirectory(){
+  if(directoryPromise)return directoryPromise;
+  const season=new Date().getUTCFullYear();
+  directoryPromise=Promise.allSettled(SPORT_IDS.map(id=>fetchJson(`${API}/sports/${id}/players?season=${season}`))).then(calls=>{
+    const all=[];for(const call of calls)if(call.status==='fulfilled')all.push(...(call.value.people||[]));
+    return [...new Map(all.filter(p=>p?.id).map(p=>[Number(p.id),p])).values()];
+  }).catch(e=>{directoryPromise=null;throw e;});
+  return directoryPromise;
+}
+async function directoryMatches(q){
+  const n=normalize(q);if(n.length<2)return[];
+  const directory=await activeDirectory();
+  const hits=directory.filter(p=>normalize(p.fullName||p.name).includes(n)).slice(0,20);
+  const enriched=await Promise.all(hits.map(p=>enrich(p.id).catch(()=>p)));
+  return enriched.filter(Boolean);
+}
 async function findPlayers(q){
   const {known,variants}=queryVariants(q),found=[];
-  if(known){const direct=await enrich(known.id).catch(()=>null);if(direct)found.push(direct);}
+  if(known?.id){const direct=await enrich(known.id).catch(()=>null);if(direct)found.push(direct);}
   if(/^\d{5,7}$/.test(q)){const direct=await enrich(Number(q)).catch(()=>null);if(direct)found.push(direct);}
   const calls=await Promise.allSettled(variants.map(name=>fetchJson(`${API}/people/search?names=${encodeURIComponent(name)}&hydrate=currentTeam`)));
   for(const call of calls)if(call.status==='fulfilled')found.push(...(call.value.people||[]));
-  const unique=[...new Map(found.map(p=>[Number(p.id),p])).values()];
-  return unique.filter(isActivePlayer);
+  let unique=[...new Map(found.filter(p=>p?.id).map(p=>[Number(p.id),p])).values()];
+  let eligible=unique.filter(isEligiblePlayer);
+  const partialQuery=!/\s/.test(normalize(q));
+  if(partialQuery||!eligible.length){const fallback=await directoryMatches(q).catch(()=>[]);unique=[...new Map([...unique,...fallback].filter(p=>p?.id).map(p=>[Number(p.id),p])).values()];eligible=unique.filter(p=>isEligiblePlayer(p)||fallback.some(f=>Number(f.id)===Number(p.id)));}
+  return eligible;
 }
 async function search(q){
   if(q.length<2){status.textContent='請至少輸入 2 個字元';return;}const cacheKey=normalize(q);if(searchCache.has(cacheKey)){renderMatches(searchCache.get(cacheKey));return;}
@@ -89,9 +96,9 @@ async function search(q){
   try{const matches=await findPlayers(q);searchCache.set(cacheKey,matches);renderMatches(matches);}catch(e){status.textContent='MLB / MiLB 搜尋暫時失敗，請再試一次';console.error(e);}finally{searchButton.disabled=false;searchButton.textContent='搜尋';}
 }
 function renderMatches(matches){
-  if(!matches.length){status.textContent='找不到現役球員。已排除沒有 current team 的退役／非現役 profile。';results.innerHTML='';return;}
-  status.textContent=`找到 ${matches.length} 位現役球員`;
-  results.innerHTML=matches.slice(0,8).map(p=>{const duplicate=players().some(x=>Number(x.id)===Number(p.id)),known=CATALOG_BY_ID.get(Number(p.id)),name=known?`${known.zh} ${known.en}`:p.fullName,team=p.currentTeam?.name||'MiLB / MLB',pos=p.primaryPosition?.abbreviation||p.primaryPosition?.name||'—';return `<div class="search-player"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${name}</strong><span>${team} · ${pos} · MLB ID ${p.id}</span></div>${duplicate?'<span class="already">已追蹤</span>':`<button class="add-player" type="button" data-watch-action="add" data-player-id="${p.id}">＋ 加入</button>`}</div>`;}).join('');
+  if(!matches.length){status.textContent='找不到符合的 MLB / MiLB 現役球員。';results.innerHTML='';return;}
+  status.textContent=`找到 ${matches.length} 位符合球員`;
+  results.innerHTML=matches.slice(0,12).map(p=>{const duplicate=players().some(x=>Number(x.id)===Number(p.id)),name=displayName(p),team=p.currentTeam?.name||'MLB / MiLB system',pos=p.primaryPosition?.abbreviation||p.primaryPosition?.name||'—';return `<div class="search-player"><img src="${photo(p.id)}" alt="" loading="lazy"><div><strong>${name}</strong><span>${team} · ${pos} · MLB ID ${p.id}</span></div>${duplicate?'<span class="already">已追蹤</span>':`<button class="add-player" type="button" data-watch-action="add" data-player-id="${p.id}">＋ 加入</button>`}</div>`;}).join('');
 }
 document.addEventListener('tracker:players-loaded',renderCurrent);
 })();
