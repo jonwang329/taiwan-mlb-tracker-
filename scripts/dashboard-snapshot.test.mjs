@@ -63,12 +63,14 @@ test('central fallback builder uses the same official schedule and boxscore sour
   assert.doesNotMatch(builder,/BASEBALL_DAY_CUTOFF|gameDay\(\)/);
 });
 
-test('snapshot builder preserves complete last-known-good player data',async()=>{
+test('snapshot builder preserves last-good data and skips only invalid players',async()=>{
   const builder=await read('scripts/build-dashboard-snapshot.mjs');
   assert.match(builder,/MAX_MLB_REQUESTS=8/);
   assert.match(builder,/AbortController/);
   assert.match(builder,/previousById/);
-  assert.match(builder,/No fresh or previous dashboard data is available/);
+  assert.match(builder,/snapshotPlayers/);
+  assert.match(builder,/Skipping \$\{player\.name\}: no fresh or previous dashboard data is available/);
+  assert.match(builder,/No valid dashboard players are available/);
   assert.match(builder,/games:games\.slice\(0,5\)/);
   assert.match(builder,/compactLevels/);
   assert.match(builder,/signature\(previous\)===signature\(next\)/);
