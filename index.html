@@ -9,6 +9,7 @@
   <meta name="theme-color" content="#071d36">
   <title>台灣旅美球員追蹤</title>
   <link rel="stylesheet" href="styles.css?v=20260812-systemfix">
+  <link rel="stylesheet" href="today-highlight.css?v=20260813-highlight-v1">
 </head>
 <body>
   <header class="site-header">
@@ -25,9 +26,11 @@
         <div><b id="player-count">—</b><span>追蹤球員</span></div>
         <div><b id="today-count">—</b><span>今日出賽</span></div>
         <div><b id="highlight-count">—</b><span>焦點表現</span></div>
-        <div><b id="daily-total">—</b><span>安打 / 三振</span></div>
+        <div class="legacy-total" aria-hidden="true"><b id="daily-total">—</b><span>安打 / 三振</span></div>
       </div>
     </section>
+
+    <section id="today-highlight" class="today-highlight" aria-live="polite" hidden></section>
 
     <section class="summary-section" aria-labelledby="summary-title">
       <div class="section-title"><div><span>QUICK SCOREBOARD</span><h2 id="summary-title">球員即時總覽</h2></div><div class="summary-tools"><small id="last-update">讀取中…</small><button id="manage-players-btn" class="manage-players" type="button">Manage <b>＋</b></button></div></div>
@@ -59,6 +62,7 @@
   <script src="taiwan-game-time.js?v=20260812-taiwan-date"></script>
   <script src="mlb-fetch-guard.js?v=20260812-resilient-refresh"></script>
   <script src="app.js?v=20260812-taiwan-official-source"></script>
+  <script src="today-highlight.js?v=20260813-highlight-v1"></script>
   <script src="watchlist-manager.js?v=20260813-manage-v2"></script>
 </body>
 </html>
