@@ -1,0 +1,1 @@
+Collapsed by default; expand only on explicit user click.
