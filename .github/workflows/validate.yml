@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check taiwan-game-time.js
           node --check app.js
+          node --check pitch-analysis.js
           node --check snapshot-bootstrap.js
           node --check mlb-fetch-guard.js
           node --check player-identities.js
