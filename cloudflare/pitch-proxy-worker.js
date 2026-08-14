@@ -5,7 +5,7 @@ function cors(request){
   const origin=request.headers.get('Origin')||'';
   return {
     'Access-Control-Allow-Origin': TRUSTED_ORIGINS.has(origin)?origin:'null',
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': 'content-type, cache-control',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Vary': 'Origin',
     'Cache-Control': 'no-store'
