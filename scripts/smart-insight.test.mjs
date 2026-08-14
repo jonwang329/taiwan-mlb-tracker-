@@ -25,11 +25,13 @@ test('insight supports both hitters and pitchers from existing result data', () 
   assert.match(source, /baseOnBalls/);
 });
 
-test('main UI loads insight and no longer loads Strike Zone', () => {
+test('main UI keeps Smart Insight and loads Strike Zone only behind the trial wrapper', () => {
   assert.match(index, /smart-insight\.css\?v=20260814-insight-v1/);
   assert.match(index, /smart-insight\.js\?v=20260814-insight-v1/);
-  assert.doesNotMatch(index, /pitch-analysis\.css/);
-  assert.doesNotMatch(index, /pitch-analysis\.js/);
+  assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v6/);
+  assert.match(index, /pitch-trial\.css\?v=20260814-trial-v1/);
+  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v6/);
+  assert.match(index, /pitch-trial\.js\?v=20260814-trial-v1/);
 });
 
 test('mobile presentation stays compact', () => {
