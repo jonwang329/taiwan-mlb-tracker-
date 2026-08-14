@@ -5,6 +5,9 @@
   const finite=v=>Number.isFinite(Number(v));
   const fmt=(v,d=1)=>finite(v)?Number(v).toFixed(d):'—';
   const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const detailRoot=document.querySelector('#player-details');
+  let renderToken=0;
+  let renderTimer=null;
 
   function levelFor(result){
     try{if(typeof currentLevel==='function')return currentLevel(result)}catch(_){}
@@ -109,23 +112,55 @@
 
   function statusHtml(level,game,message){return`<section class="pitch-analysis pitch-status"><div class="pitch-analysis-head"><div><span>STRIKE ZONE + CONTACT · ${esc(level)}</span><h4>逐球打擊圖</h4></div></div><p>${esc(message)}</p>${game?.gamePk?`<a href="https://baseballsavant.mlb.com/gamefeed?gamePk=${encodeURIComponent(game.gamePk)}" target="_blank" rel="noopener">查看 Baseball Savant 官方 Gamefeed ↗</a>`:''}</section>`}
 
-  async function renderOne(player,result){
-    const detail=document.querySelector(`#player-${player.id}`);if(!detail||player.group!=='hitting')return;detail.querySelector('.pitch-analysis')?.remove();
+  function mount(detail,html){
+    detail.querySelector('.pitch-analysis')?.remove();
+    const anchor=detail.querySelector('.today-detail');
+    if(anchor)anchor.insertAdjacentHTML('afterend',html);else detail.insertAdjacentHTML('beforeend',html);
+  }
+
+  async function renderOne(player,result,token){
+    const detail=document.querySelector(`#player-${player.id}`);if(!detail||player.group!=='hitting'||token!==renderToken)return;
     const level=levelFor(result);if(!eligible(level))return;
-    const game=gameFor(result,level);if(!game?.gamePk){detail.insertAdjacentHTML('beforeend',statusHtml(level,null,'目前找不到 MLB / Triple-A 可分析的最近一場 gamePk。'));return}
-    detail.insertAdjacentHTML('beforeend',statusHtml(level,game,'正在讀取官方逐球資料…'));
-    try{const feed=await fetchFeed(game.gamePk);if(!document.body.contains(detail))return;const pas=plateAppearances(feed,player.id);detail.querySelector('.pitch-analysis')?.remove();detail.insertAdjacentHTML('beforeend',pas.length?sectionHtml(result,game,pas):statusHtml(level,game,'官方 game feed 已取得，但這場沒有找到此打者的逐球打席資料。'))}
-    catch(error){console.warn('Pitch analysis unavailable',player.name,game.gamePk,error);if(!document.body.contains(detail))return;detail.querySelector('.pitch-analysis')?.remove();detail.insertAdjacentHTML('beforeend',statusHtml(level,game,'逐球資料目前暫時無法讀取；主站 box score 與 season 資料不受影響。'))}
+    const game=gameFor(result,level);if(!game?.gamePk){mount(detail,statusHtml(level,null,'目前找不到 MLB / Triple-A 可分析的最近一場 gamePk。'));return}
+    mount(detail,statusHtml(level,game,'正在讀取官方逐球資料…'));
+    try{
+      const feed=await fetchFeed(game.gamePk);if(token!==renderToken)return;
+      const currentDetail=document.querySelector(`#player-${player.id}`);if(!currentDetail)return;
+      const pas=plateAppearances(feed,player.id);
+      mount(currentDetail,pas.length?sectionHtml(result,game,pas):statusHtml(level,game,'官方 game feed 已取得，但這場沒有找到此打者的逐球打席資料。'));
+    }catch(error){
+      console.warn('Pitch analysis unavailable',player.name,game.gamePk,error);if(token!==renderToken)return;
+      const currentDetail=document.querySelector(`#player-${player.id}`);if(currentDetail)mount(currentDetail,statusHtml(level,game,'逐球資料目前暫時無法讀取；主站 box score 與 season 資料不受影響。'));
+    }
   }
 
-  let renderToken=0;
+  function primaryRefreshBusy(){
+    const text=document.querySelector('#last-update')?.textContent||'';
+    return text.includes('正在向 MLB')||text.includes('正在讀取 MLB');
+  }
+
   async function renderPitchAnalysis(){
-    const token=++renderToken;if(typeof players==='undefined'||typeof lastResults==='undefined')return;
-    const jobs=[...(Array.isArray(players)?players:[])].map((player,i)=>({player,result:lastResults[i]})).filter(x=>x.result&&x.player?.group==='hitting'&&eligible(levelFor(x.result)));
-    for(const job of jobs){if(token!==renderToken)return;await renderOne(job.player,job.result)}
+    const token=++renderToken;
+    if(primaryRefreshBusy()){
+      scheduleRender(180);
+      return;
+    }
+    if(typeof players==='undefined'||typeof lastResults==='undefined')return;
+    const sourcePlayers=Array.isArray(players)?[...players]:[];
+    const sourceResults=Array.isArray(lastResults)?[...lastResults]:[];
+    const jobs=sourcePlayers.map((player,i)=>({player,result:sourceResults[i]})).filter(x=>x.result&&x.player?.group==='hitting'&&eligible(levelFor(x.result)));
+    for(const job of jobs){if(token!==renderToken)return;await renderOne(job.player,job.result,token)}
   }
 
-  document.addEventListener('tracker:players-loaded',()=>renderPitchAnalysis().catch(()=>{}));
-  window.addEventListener('pageshow',()=>setTimeout(()=>renderPitchAnalysis().catch(()=>{}),0),{once:true});
-  setTimeout(()=>renderPitchAnalysis().catch(()=>{}),0);
+  function scheduleRender(delay=80){
+    clearTimeout(renderTimer);
+    renderTimer=setTimeout(()=>renderPitchAnalysis().catch(()=>{}),delay);
+  }
+
+  document.addEventListener('tracker:players-loaded',()=>scheduleRender(120));
+  if(detailRoot)new MutationObserver(mutations=>{
+    if(mutations.some(m=>m.target===detailRoot))scheduleRender(140);
+  }).observe(detailRoot,{childList:true});
+  window.addEventListener('pageshow',()=>scheduleRender(220),{once:true});
+  scheduleRender(220);
 })();
