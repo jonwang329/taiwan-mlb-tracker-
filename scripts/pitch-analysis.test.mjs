@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../pitch-analysis.js', import.meta.url), 'utf8');
-const adapter = await readFile(new URL('../pitch-data-adapter.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../pitch-analysis.css', import.meta.url), 'utf8');
 const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 
@@ -22,14 +21,19 @@ test('pitch view still reads pitch/contact fields', () => {
   assert.match(source, /totalDistance/);
 });
 
-test('adapter routes the browser pitch request through the dedicated Cloudflare proxy', () => {
-  assert.doesNotThrow(() => new Function(adapter));
-  assert.match(adapter, /api\\\/v1\\\.1\\\/game/);
-  assert.match(adapter, /taiwan-mlb-pitch-proxy\.jonwang329\.workers\.dev/);
-  assert.match(adapter, /\/mlb\/playbyplay\/\$\{gamePk\}/);
-  assert.match(adapter, /allPlays: Array\.isArray\(data\?\.allPlays\)/);
-  assert.match(adapter, /window\.PITCH_DATA_SOURCE = 'MLB Stats API via Cloudflare pitch proxy'/);
-  assert.doesNotMatch(adapter, /statsapi\.mlb\.com\/api\/v1\/game\/\$\{gamePk\}\/playByPlay/);
+test('pitch analysis talks directly to the dedicated Cloudflare proxy', () => {
+  assert.match(source, /taiwan-mlb-pitch-proxy\.jonwang329\.workers\.dev/);
+  assert.match(source, /\/mlb\/playbyplay\/\$\{gamePk\}/);
+  assert.match(source, /feed\?\.allPlays/);
+  assert.doesNotMatch(source, /api\/v1\.1\/game/);
+  assert.doesNotMatch(index, /pitch-data-adapter\.js/);
+});
+
+test('game selection prefers exact today game and then a real PA game', () => {
+  assert.match(source, /result\?\.today\?\.game\?\.gamePk/);
+  assert.match(source, /plateAppearances/);
+  assert.match(source, /const withPa=candidates\.find/);
+  assert.match(source, /gamePk\|\|0\)-Number\(a\.game\?\.gamePk/);
 });
 
 test('view focuses on strike zone and contacted pitches without mistake-pitch claims', () => {
@@ -67,14 +71,12 @@ test('slot is reserved synchronously below today detail and protects scroll anch
   assert.match(css, /\.pitch-analysis\.is-loading\{min-height:430px\}/);
 });
 
-test('browser loads the v5 Cloudflare adapter before pitch analysis after the stable app core', () => {
-  assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v4/);
-  assert.match(index, /pitch-data-adapter\.js\?v=20260814-pitch-v5/);
-  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v5/);
+test('browser loads v6 pitch analysis directly after the stable app core', () => {
+  assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v6/);
+  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v6/);
   const appAt = index.indexOf('app.js?v=');
-  const adapterAt = index.indexOf('pitch-data-adapter.js?v=');
   const pitchAt = index.indexOf('pitch-analysis.js?v=');
-  assert.ok(appAt >= 0 && adapterAt > appAt && pitchAt > adapterAt);
+  assert.ok(appAt >= 0 && pitchAt > appAt);
 });
 
 test('MLB playByPlay endpoint returns pitch events for a known tracked-player game', async () => {

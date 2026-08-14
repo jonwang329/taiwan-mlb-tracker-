@@ -1,5 +1,5 @@
 (() => {
-  const V11='https://statsapi.mlb.com/api/v1.1';
+  const PITCH_PROXY='https://taiwan-mlb-pitch-proxy.jonwang329.workers.dev';
   const feedCache=new Map();
   const htmlCache=new Map();
   const eligible=level=>level==='MLB'||level==='AAA';
@@ -15,18 +15,24 @@
   }
 
   function gameFor(result,level){
-    if(result?.today?.game?.gamePk&&result.today.level===level)return{gamePk:result.today.game.gamePk,date:result.today.date,live:Boolean(result.today.live)};
-    const same=(result?.games||[]).find(g=>g?.game?.gamePk&&g.level===level);
-    const fallback=same||(result?.games||[]).find(g=>g?.game?.gamePk);
-    return fallback?{gamePk:fallback.game.gamePk,date:fallback.date,live:false}:null;
+    if(result?.today?.game?.gamePk)return{gamePk:result.today.game.gamePk,date:result.today.date,live:Boolean(result.today.live),level:result.today.level||level};
+    const candidates=(result?.games||[])
+      .filter(g=>g?.game?.gamePk&&(!level||g.level===level))
+      .sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.game?.gamePk||0)-Number(a.game?.gamePk||0));
+    const withPa=candidates.find(g=>Number(g?.stat?.plateAppearances||0)>0||Number(g?.stat?.atBats||0)>0||Number(g?.stat?.baseOnBalls||0)>0||Number(g?.stat?.hitByPitch||0)>0);
+    const fallback=withPa||candidates[0]||(result?.games||[]).find(g=>g?.game?.gamePk);
+    return fallback?{gamePk:fallback.game.gamePk,date:fallback.date,live:false,level:fallback.level||level}:null;
   }
 
   function cacheKey(player,game){return `${Number(player.id)}:${game?.gamePk||'none'}`;}
 
   async function fetchFeed(gamePk){
     if(feedCache.has(gamePk))return feedCache.get(gamePk);
-    const task=fetch(`${V11}/game/${gamePk}/feed/live?_=${Date.now()}`,{cache:'no-store',headers:{Accept:'application/json','Cache-Control':'no-cache'}})
-      .then(r=>{if(!r.ok)throw new Error(`MLB game feed ${r.status}`);return r.json()})
+    const task=fetch(`${PITCH_PROXY}/mlb/playbyplay/${gamePk}?_=${Date.now()}`,{
+      cache:'no-store',
+      headers:{Accept:'application/json'}
+    })
+      .then(r=>{if(!r.ok)throw new Error(`PITCH-PROXY HTTP ${r.status}`);return r.json()})
       .catch(error=>{feedCache.delete(gamePk);throw error});
     feedCache.set(gamePk,task);return task;
   }
@@ -46,7 +52,8 @@
   }
 
   function plateAppearances(feed,playerId){
-    return(feed?.liveData?.plays?.allPlays||[])
+    const plays=Array.isArray(feed?.allPlays)?feed.allPlays:(feed?.liveData?.plays?.allPlays||[]);
+    return plays
       .filter(pa=>Number(pa?.matchup?.batter?.id)===Number(playerId))
       .map((pa,index)=>({
         pa:index+1,inning:pa?.about?.inning??'—',half:pa?.about?.halfInning||'',result:pa?.result?.event||pa?.result?.description||'—',pitcher:pa?.matchup?.pitcher?.fullName||'—',
@@ -113,13 +120,20 @@
     return`${headerContent(level,game)}<div class="pitch-slot-message">${esc(message)}</div>`;
   }
 
+  function expectedPa(result,game){
+    if(Number(result?.today?.game?.gamePk)===Number(game?.gamePk))return Number(result?.today?.stat?.plateAppearances||0)||null;
+    const row=(result?.games||[]).find(g=>Number(g?.game?.gamePk)===Number(game?.gamePk));
+    return Number(row?.stat?.plateAppearances||0)||null;
+  }
+
   function sectionContent(result,game,pas){
-    const pitches=allPitches(pas),contacts=pitches.filter(p=>p.contact),inPlay=pitches.filter(p=>p.inPlay);
-    return`${headerContent(levelFor(result),game)}
+    const pitches=allPitches(pas),contacts=pitches.filter(p=>p.contact),inPlay=pitches.filter(p=>p.inPlay),expected=expectedPa(result,game);
+    const mismatch=expected&&pas.length<expected?`<p class="pitch-method-note">逐球 feed 顯示 ${pas.length} PA，但 box score 為 ${expected} PA；已標記資料差異，不會把缺少的打席當成完整資料。</p>`:'';
+    return`${headerContent(game?.level||levelFor(result),game)}
       <div class="pitch-kpis"><div><span>PA</span><b>${pas.length}</b></div><div><span>看球數</span><b>${pitches.length}</b></div><div><span>碰到球</span><b>${contacts.length}</b></div><div><span>打進場內</span><b>${inPlay.length}</b></div></div>
       <div class="pitch-readout"><b>本場客觀摘要</b><p>${esc(factualSummary(pas))}</p></div>
       <div class="pitch-analysis-grid">${mapSvg(pas)}<div><div class="contact-title"><b>被打到的球</b><span>只列有接觸的投球</span></div>${contactTable(pas)}</div></div>
-      <p class="pitch-method-note">只呈現 MLB / Triple-A 官方逐球可取得的球種、球速、位置與擊球資料；不判定「失投」，也暫不做 AI 配球分析。</p>`;
+      ${mismatch}<p class="pitch-method-note">只呈現 MLB / Triple-A 官方逐球可取得的球種、球速、位置與擊球資料；不判定「失投」，也暫不做 AI 配球分析。</p>`;
   }
 
   function errorContent(level,game,message){
@@ -144,10 +158,10 @@
     if(slot.dataset.cacheKey!==key){
       slot.dataset.cacheKey=key;
       const cached=htmlCache.get(key);
-      slot.innerHTML=cached||loadingContent(level,game);
+      slot.innerHTML=cached||loadingContent(game?.level||level,game);
       slot.classList.toggle('is-loading',!cached);
     }
-    return{slot,level,game,key};
+    return{slot,level:game?.level||level,game,key};
   }
 
   function reserveSlots(){
@@ -168,13 +182,14 @@
     try{
       const feed=await fetchFeed(game.gamePk);if(token!==renderToken)return;
       const pas=plateAppearances(feed,player.id);
-      const html=pas.length?sectionContent(result,game,pas):errorContent(level,game,'官方 game feed 已取得，但這場沒有找到此打者的逐球打席資料。');
+      const html=pas.length?sectionContent(result,game,pas):errorContent(level,game,`Cloudflare 已讀到 game ${game.gamePk}，但沒有找到此打者的逐球 PA。`);
       htmlCache.set(key,html);
       const current=document.querySelector(`#player-${player.id} .pitch-analysis[data-cache-key="${key}"]`);
       if(current){current.innerHTML=html;current.classList.remove('is-loading');}
     }catch(error){
       console.warn('Pitch analysis unavailable',player.name,game.gamePk,error);if(token!==renderToken)return;
-      const html=errorContent(level,game,'逐球資料目前暫時無法讀取；主站 box score 與 season 資料不受影響。');
+      const code=String(error?.message||error||'unknown');
+      const html=errorContent(level,game,`逐球讀取失敗（${code}；game ${game.gamePk}）。主站 box score 與 season 資料不受影響。`);
       const current=document.querySelector(`#player-${player.id} .pitch-analysis[data-cache-key="${key}"]`);
       if(current){current.innerHTML=html;current.classList.remove('is-loading');}
     }
@@ -205,17 +220,12 @@
     settleTimer=setTimeout(()=>renderPitchAnalysis().catch(()=>{}),delay);
   }
 
-  // paint() dispatches this synchronously after replacing player-details.
-  // Reserve each stable slot in the same task so the browser never paints a card
-  // without its Strike Zone position and later jumps when the async feed arrives.
   document.addEventListener('tracker:players-loaded',()=>{
     reserveSlots();
     scheduleWhenSettled(80);
   });
 
-  // app.js may restore a cached dashboard before its first official refresh.
-  // Reserve the slot now, but do not render stale pitch content; the settle loop
-  // waits until the official refresh completes (or fails) before filling the slot.
+  window.PITCH_DATA_SOURCE='MLB Stats API via direct Cloudflare pitch proxy';
   reserveSlots();
   scheduleWhenSettled(120);
 })();
