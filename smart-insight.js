@@ -53,7 +53,7 @@
       a.outs+=inningsOuts(s.inningsPitched);a.er+=n(s.earnedRuns);a.bb+=n(s.baseOnBalls);a.so+=n(s.strikeOuts);a.h+=n(s.hits);
       return a;
     },{outs:0,er:0,bb:0,so:0,h:0});
-    const ip=totals.outs/3, era=totals.outs?totals.er*27/totals.outs:null, k9=totals.outs?totals.so*27/totals.outs:null, bb9=totals.outs?totals.bb*27/totals.outs:null;
+    const era=totals.outs?totals.er*27/totals.outs:null, k9=totals.outs?totals.so*27/totals.outs:null, bb9=totals.outs?totals.bb*27/totals.outs:null;
     const kbb=totals.bb?totals.so/totals.bb:(totals.so?Infinity:null);
 
     let trend='近期登板樣本仍小，先看三振、保送與失分方向。';
@@ -77,12 +77,33 @@
 
   function insightFor(player,result){return player?.group==='pitching'?pitcherRead(result):hitterRead(result);}
 
+  function playerSlug(player){
+    return String(player?.name||'player').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'player';
+  }
+
+  function officialLinks(player,result){
+    const id=Number(player?.id);if(!id)return '';
+    const slug=playerSlug(player), todayPk=Number(result?.today?.game?.gamePk)||null;
+    const recent=(result?.games||[]).find(g=>Number(g?.game?.gamePk));
+    const gamePk=todayPk||Number(recent?.game?.gamePk)||null;
+    const gameLabel=todayPk?'Today Game':'Latest Game';
+    const links=[
+      `<a href="https://www.mlb.com/player/${slug}-${id}" target="_blank" rel="noopener">MLB Player ↗</a>`,
+      `<a href="https://baseballsavant.mlb.com/savant-player/${slug}-${id}" target="_blank" rel="noopener">Savant Player ↗</a>`
+    ];
+    if(gamePk){
+      links.splice(1,0,`<a href="https://www.mlb.com/gameday/${gamePk}" target="_blank" rel="noopener">${gameLabel} ↗</a>`);
+      links.push(`<a href="https://baseballsavant.mlb.com/gamefeed?gamePk=${gamePk}" target="_blank" rel="noopener">Savant Game ↗</a>`);
+    }
+    return `<div class="official-deep-dive"><b>OFFICIAL DEEP DIVE</b><div>${links.join('')}</div><small>直接開官方球員頁或今天／最近一場比賽；本網站不串流逐球資料。</small></div>`;
+  }
+
   function renderOne(player,result){
     const card=document.querySelector(`#player-${player.id}`);if(!card||!result)return;
     card.querySelector('.ai-insight')?.remove();
     const read=insightFor(player,result),section=document.createElement('section');
     section.className='ai-insight';
-    section.innerHTML=`<div class="ai-insight-head"><span>AI INSIGHT</span><small>20-sec read · data-based v1</small></div><div class="ai-insight-row"><b>Trend</b><p>${esc(read.trend)}</p></div><div class="ai-insight-row"><b>What it may mean</b><p>${esc(read.meaning)}</p></div><div class="ai-insight-row"><b>Watch next</b><p>${esc(read.watch)}</p></div><small class="ai-insight-note">依 MLB / MiLB 官方 box score、近況與球季數據產生；屬資料推論，不假設未觀測到的配球或教練策略。</small>`;
+    section.innerHTML=`<div class="ai-insight-head"><span>AI INSIGHT</span><small>20-sec read · data-based v1</small></div><div class="ai-insight-row"><b>Trend</b><p>${esc(read.trend)}</p></div><div class="ai-insight-row"><b>What it may mean</b><p>${esc(read.meaning)}</p></div><div class="ai-insight-row"><b>Watch next</b><p>${esc(read.watch)}</p></div><small class="ai-insight-note">依 MLB / MiLB 官方 box score、近況與球季數據產生；屬資料推論，不假設未觀測到的配球或教練策略。</small>${officialLinks(player,result)}`;
     const anchor=card.querySelector('.today-detail');
     if(anchor)anchor.insertAdjacentElement('afterend',section);else card.appendChild(section);
   }
