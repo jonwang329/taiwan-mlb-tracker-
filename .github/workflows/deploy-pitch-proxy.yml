@@ -1,0 +1,60 @@
+name: Deploy pitch proxy Worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare/pitch-proxy-worker.js'
+      - '.github/workflows/deploy-pitch-proxy.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify Cloudflare secrets
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CF_TOKEN" || { echo "::error::CLOUDFLARE_API_TOKEN is missing"; exit 1; }
+          test -n "$CF_ACCOUNT" || { echo "::error::CLOUDFLARE_ACCOUNT_ID is missing"; exit 1; }
+      - name: Install Wrangler
+        run: npm install --no-save wrangler@4
+      - name: Deploy pitch proxy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          cat > wrangler.pitch.toml <<EOF
+          name = "taiwan-mlb-pitch-proxy"
+          main = "cloudflare/pitch-proxy-worker.js"
+          compatibility_date = "2026-08-14"
+          account_id = "$CLOUDFLARE_ACCOUNT_ID"
+          workers_dev = true
+          EOF
+          npx wrangler deploy --config wrangler.pitch.toml
+      - name: Verify browser-facing pitch route
+        run: |
+          URL="https://taiwan-mlb-pitch-proxy.jonwang329.workers.dev"
+          health=""
+          for attempt in $(seq 1 15); do
+            health=$(curl -fsS "$URL/health" || true)
+            if echo "$health" | jq -e '.ok == true and .mode == "pitch-proxy-v1"' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          echo "$health" | jq -e '.ok == true and .mode == "pitch-proxy-v1"'
+          data=$(curl -fsS "$URL/mlb/playbyplay/824238")
+          echo "$data" | jq -e '.gamePk == 824238 and (.allPlays | length > 0)'
+          echo "$data" | jq -e '[.allPlays[] | select(.matchup.batter.id == 701678) | .playEvents[]? | select(.isPitch == true and .pitchData != null)] | length > 0'
+          echo "Pitch proxy verified with Hao-Yu Lee game 824238"
