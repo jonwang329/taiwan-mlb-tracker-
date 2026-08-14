@@ -37,4 +37,4 @@ jobs:
           node --check scripts/shared-tracker-data.mjs
           node --check scripts/manage-watchlist.mjs
       - name: Automation tests
-        run: node --test scripts/automation.test.mjs scripts/dashboard-snapshot.test.mjs scripts/taiwan-game-time.test.mjs scripts/schedule-query.test.mjs scripts/line-content.test.mjs scripts/player-identities.test.mjs
+        run: node --test scripts/automation.test.mjs scripts/dashboard-snapshot.test.mjs scripts/taiwan-game-time.test.mjs scripts/schedule-query.test.mjs scripts/line-content.test.mjs scripts/player-identities.test.mjs scripts/pitch-analysis.test.mjs
