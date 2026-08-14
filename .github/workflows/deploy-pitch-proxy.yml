@@ -54,7 +54,17 @@ jobs:
             sleep 2
           done
           echo "$health" | jq -e '.ok == true and .mode == "pitch-proxy-v1"'
-          data=$(curl -fsS "$URL/mlb/playbyplay/824238")
+
+          preflight=$(curl -si -X OPTIONS "$URL/mlb/playbyplay/824238" \
+            -H 'Origin: https://jonwang329.github.io' \
+            -H 'Access-Control-Request-Method: GET' \
+            -H 'Access-Control-Request-Headers: cache-control')
+          echo "$preflight" | grep -qi '^access-control-allow-origin: https://jonwang329.github.io'
+          echo "$preflight" | grep -qi '^access-control-allow-headers: .*cache-control'
+
+          response=$(curl -si "$URL/mlb/playbyplay/824238" -H 'Origin: https://jonwang329.github.io')
+          echo "$response" | grep -qi '^access-control-allow-origin: https://jonwang329.github.io'
+          data=$(printf '%s' "$response" | sed '1,/^\r$/d')
           echo "$data" | jq -e '.gamePk == 824238 and (.allPlays | length > 0)'
           echo "$data" | jq -e '[.allPlays[] | select(.matchup.batter.id == 701678) | .playEvents[]? | select(.isPitch == true and .pitchData != null)] | length > 0'
-          echo "Pitch proxy verified with Hao-Yu Lee game 824238"
+          echo "Pitch proxy verified with browser CORS and Hao-Yu Lee game 824238"
