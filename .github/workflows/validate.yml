@@ -20,6 +20,7 @@ jobs:
         run: |
           node --check taiwan-game-time.js
           node --check app.js
+          node --check pitch-data-adapter.js
           node --check pitch-analysis.js
           node --check snapshot-bootstrap.js
           node --check mlb-fetch-guard.js
@@ -28,6 +29,7 @@ jobs:
           node --check watchlist-fast-feedback.js
           node --check watchlist-manager.js
           node --check today-highlight.js
+          node --check cloudflare/pitch-proxy-worker.js
           node --check cloudflare/observation-worker.js
           node --check cloudflare/line-worker.js
           node --check cloudflare/line-flex-worker.js
