@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../pitch-analysis.js', import.meta.url), 'utf8');
+const adapter = await readFile(new URL('../pitch-data-adapter.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../pitch-analysis.css', import.meta.url), 'utf8');
 const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 
@@ -11,9 +12,7 @@ test('pitch analysis is limited to MLB and Triple-A hitters', () => {
   assert.match(source, /player\?\.group!==\'hitting\'/);
 });
 
-test('pitch analysis reads official live game feed and pitch/contact fields', () => {
-  assert.match(source, /statsapi\.mlb\.com\/api\/v1\.1/);
-  assert.match(source, /\/game\/\$\{gamePk\}\/feed\/live/);
+test('pitch view still reads pitch/contact fields', () => {
   assert.match(source, /startSpeed/);
   assert.match(source, /coordinates/);
   assert.match(source, /pX/);
@@ -21,6 +20,14 @@ test('pitch analysis reads official live game feed and pitch/contact fields', ()
   assert.match(source, /launchSpeed/);
   assert.match(source, /launchAngle/);
   assert.match(source, /totalDistance/);
+});
+
+test('adapter replaces the heavy v1.1 full feed with lightweight v1 playByPlay', () => {
+  assert.doesNotThrow(() => new Function(adapter));
+  assert.match(adapter, /api\\\/v1\\\.1\\\/game/);
+  assert.match(adapter, /api\/v1\/game\/\$\{gamePk\}\/playByPlay/);
+  assert.match(adapter, /allPlays: Array\.isArray\(data\?\.allPlays\)/);
+  assert.match(adapter, /window\.PITCH_DATA_SOURCE = 'MLB Stats API v1 playByPlay'/);
 });
 
 test('view focuses on strike zone and contacted pitches without mistake-pitch claims', () => {
@@ -58,10 +65,22 @@ test('slot is reserved synchronously below today detail and protects scroll anch
   assert.match(css, /\.pitch-analysis\.is-loading\{min-height:430px\}/);
 });
 
-test('browser loads v3 pitch assets after the stable app core', () => {
-  assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v3/);
-  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v3/);
+test('browser loads adapter before v4 pitch analysis after the stable app core', () => {
+  assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v4/);
+  assert.match(index, /pitch-data-adapter\.js\?v=20260814-pitch-v4/);
+  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v4/);
   const appAt = index.indexOf('app.js?v=');
+  const adapterAt = index.indexOf('pitch-data-adapter.js?v=');
   const pitchAt = index.indexOf('pitch-analysis.js?v=');
-  assert.ok(appAt >= 0 && pitchAt > appAt);
+  assert.ok(appAt >= 0 && adapterAt > appAt && pitchAt > adapterAt);
+});
+
+test('MLB playByPlay endpoint returns pitch events for a known tracked-player game', async () => {
+  const response = await fetch('https://statsapi.mlb.com/api/v1/game/824238/playByPlay', { headers: { Accept: 'application/json' } });
+  assert.equal(response.ok, true, `MLB playByPlay returned ${response.status}`);
+  const data = await response.json();
+  assert.ok(Array.isArray(data.allPlays) && data.allPlays.length > 0, 'playByPlay allPlays is empty');
+  const haoYu = data.allPlays.filter(play => Number(play?.matchup?.batter?.id) === 701678);
+  assert.ok(haoYu.length > 0, 'Hao-Yu Lee plate appearances missing from known game');
+  assert.ok(haoYu.some(play => (play.playEvents || []).some(event => event.isPitch && event.pitchData)), 'pitchData missing for tracked hitter');
 });
