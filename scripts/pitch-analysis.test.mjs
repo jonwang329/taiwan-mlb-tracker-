@@ -22,12 +22,14 @@ test('pitch view still reads pitch/contact fields', () => {
   assert.match(source, /totalDistance/);
 });
 
-test('adapter replaces the heavy v1.1 full feed with lightweight v1 playByPlay', () => {
+test('adapter routes the browser pitch request through the dedicated Cloudflare proxy', () => {
   assert.doesNotThrow(() => new Function(adapter));
   assert.match(adapter, /api\\\/v1\\\.1\\\/game/);
-  assert.match(adapter, /api\/v1\/game\/\$\{gamePk\}\/playByPlay/);
+  assert.match(adapter, /taiwan-mlb-pitch-proxy\.jonwang329\.workers\.dev/);
+  assert.match(adapter, /\/mlb\/playbyplay\/\$\{gamePk\}/);
   assert.match(adapter, /allPlays: Array\.isArray\(data\?\.allPlays\)/);
-  assert.match(adapter, /window\.PITCH_DATA_SOURCE = 'MLB Stats API v1 playByPlay'/);
+  assert.match(adapter, /window\.PITCH_DATA_SOURCE = 'MLB Stats API via Cloudflare pitch proxy'/);
+  assert.doesNotMatch(adapter, /statsapi\.mlb\.com\/api\/v1\/game\/\$\{gamePk\}\/playByPlay/);
 });
 
 test('view focuses on strike zone and contacted pitches without mistake-pitch claims', () => {
@@ -65,10 +67,10 @@ test('slot is reserved synchronously below today detail and protects scroll anch
   assert.match(css, /\.pitch-analysis\.is-loading\{min-height:430px\}/);
 });
 
-test('browser loads adapter before v4 pitch analysis after the stable app core', () => {
+test('browser loads the v5 Cloudflare adapter before pitch analysis after the stable app core', () => {
   assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v4/);
-  assert.match(index, /pitch-data-adapter\.js\?v=20260814-pitch-v4/);
-  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v4/);
+  assert.match(index, /pitch-data-adapter\.js\?v=20260814-pitch-v5/);
+  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v5/);
   const appAt = index.indexOf('app.js?v=');
   const adapterAt = index.indexOf('pitch-data-adapter.js?v=');
   const pitchAt = index.indexOf('pitch-analysis.js?v=');
