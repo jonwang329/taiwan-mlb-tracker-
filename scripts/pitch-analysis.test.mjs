@@ -31,8 +31,22 @@ test('view focuses on strike zone and contacted pitches without mistake-pitch cl
   assert.doesNotMatch(source, /中央甜蜜帶/);
 });
 
-test('browser loads pitch analysis assets after the stable app core', () => {
-  assert.match(index, /pitch-analysis\.css\?v=/);
+test('pitch view survives dashboard repaint and waits for the primary refresh', () => {
+  assert.match(source, /new MutationObserver/);
+  assert.match(source, /m\.target===detailRoot/);
+  assert.match(source, /primaryRefreshBusy/);
+  assert.match(source, /text\.includes\('正在向 MLB'\)/);
+  assert.match(source, /scheduleRender\(180\)/);
+});
+
+test('pitch view is mounted directly below today detail for desktop and phone', () => {
+  assert.match(source, /querySelector\('\.today-detail'\)/);
+  assert.match(source, /insertAdjacentHTML\('afterend',html\)/);
+});
+
+test('browser loads a cache-busted pitch asset after the stable app core', () => {
+  assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v2/);
+  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v2/);
   const appAt = index.indexOf('app.js?v=');
   const pitchAt = index.indexOf('pitch-analysis.js?v=');
   assert.ok(appAt >= 0 && pitchAt > appAt);
