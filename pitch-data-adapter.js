@@ -1,6 +1,7 @@
 (() => {
   const upstreamFetch = window.fetch.bind(window);
   const FEED_RE = /^https:\/\/statsapi\.mlb\.com\/api\/v1\.1\/game\/(\d+)\/feed\/live(?:\?.*)?$/;
+  const PITCH_PROXY = 'https://taiwan-mlb-pitch-proxy.jonwang329.workers.dev';
 
   window.fetch = async (input, init = {}) => {
     const url = String(typeof input === 'string' ? input : input?.url || '');
@@ -8,8 +9,7 @@
     if (!match) return upstreamFetch(input, init);
 
     const gamePk = match[1];
-    const playByPlayUrl = `https://statsapi.mlb.com/api/v1/game/${gamePk}/playByPlay?_=${Date.now()}`;
-    const response = await upstreamFetch(playByPlayUrl, {
+    const response = await upstreamFetch(`${PITCH_PROXY}/mlb/playbyplay/${gamePk}?_=${Date.now()}`, {
       ...init,
       cache: 'no-store',
       headers: { ...(init.headers || {}), Accept: 'application/json', 'Cache-Control': 'no-cache' }
@@ -34,5 +34,5 @@
     });
   };
 
-  window.PITCH_DATA_SOURCE = 'MLB Stats API v1 playByPlay';
+  window.PITCH_DATA_SOURCE = 'MLB Stats API via Cloudflare pitch proxy';
 })();
