@@ -6,11 +6,11 @@ const source = await readFile(new URL('../pitch-analysis.js', import.meta.url), 
 const index = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 
 test('pitch analysis is limited to MLB and Triple-A hitters', () => {
-  assert.match(source, /level === 'MLB' \|\| level === 'AAA'/);
-  assert.match(source, /player\.group !== 'hitting'/);
+  assert.match(source, /level==='MLB'\|\|level==='AAA'/);
+  assert.match(source, /player\.group!==\'hitting\'/);
 });
 
-test('pitch analysis reads official live game feed and Statcast-like fields', () => {
+test('pitch analysis reads official live game feed and pitch/contact fields', () => {
   assert.match(source, /statsapi\.mlb\.com\/api\/v1\.1/);
   assert.match(source, /\/game\/\$\{gamePk\}\/feed\/live/);
   assert.match(source, /startSpeed/);
@@ -22,10 +22,13 @@ test('pitch analysis reads official live game feed and Statcast-like fields', ()
   assert.match(source, /totalDistance/);
 });
 
-test('mistake pitch label remains explicitly heuristic', () => {
-  assert.match(source, /失投候選/);
-  assert.match(source, /不是官方判定/);
-  assert.match(source, /中央甜蜜帶/);
+test('view focuses on strike zone and contacted pitches without mistake-pitch claims', () => {
+  assert.match(source, /STRIKE ZONE \+ CONTACT/);
+  assert.match(source, /被打到的球/);
+  assert.match(source, /只列有接觸的投球/);
+  assert.match(source, /不判定「失投」/);
+  assert.doesNotMatch(source, /失投候選/);
+  assert.doesNotMatch(source, /中央甜蜜帶/);
 });
 
 test('browser loads pitch analysis assets after the stable app core', () => {
