@@ -23,7 +23,10 @@
       modal.hidden=true;
       document.body.classList.remove('modal-open');
     }
-    requestAnimationFrame(()=>window.location.reload());
+    // Do not force an immediate reload here. Cloudflare KV can briefly serve
+    // a stale edge read right after a successful write, which can make the
+    // just-added player disappear. The POST /players response is authoritative
+    // for this interaction and applyWatchlist already updates the UI immediately.
   });
 
   window.addEventListener('pageshow',()=>{pending=null;});
