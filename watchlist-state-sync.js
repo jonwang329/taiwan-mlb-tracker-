@@ -23,7 +23,8 @@
       modal.hidden=true;
       document.body.classList.remove('modal-open');
     }
-    requestAnimationFrame(()=>window.location.reload());
+    // Keep the successful POST response in the UI. An immediate reload can
+    // re-read a briefly stale Cloudflare KV edge value and hide the new player.
   });
 
   window.addEventListener('pageshow',()=>{pending=null;});
