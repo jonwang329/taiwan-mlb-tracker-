@@ -25,16 +25,29 @@ test('insight supports both hitters and pitchers from existing result data', () 
   assert.match(source, /baseOnBalls/);
 });
 
-test('main UI keeps Smart Insight and loads Strike Zone only behind the trial wrapper', () => {
-  assert.match(index, /smart-insight\.css\?v=20260814-insight-v1/);
-  assert.match(index, /smart-insight\.js\?v=20260814-insight-v1/);
-  assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v6/);
-  assert.match(index, /pitch-trial\.css\?v=20260814-trial-v1/);
-  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v6/);
-  assert.match(index, /pitch-trial\.js\?v=20260814-trial-v1/);
+test('every player gets direct official player links and a game-specific deep dive when gamePk exists', () => {
+  assert.match(source, /www\.mlb\.com\/player\/\$\{slug\}-\$\{id\}/);
+  assert.match(source, /baseballsavant\.mlb\.com\/savant-player\/\$\{slug\}-\$\{id\}/);
+  assert.match(source, /result\?\.today\?\.game\?\.gamePk/);
+  assert.match(source, /www\.mlb\.com\/gameday\/\$\{gamePk\}/);
+  assert.match(source, /baseballsavant\.mlb\.com\/gamefeed\?gamePk=\$\{gamePk\}/);
+  assert.match(source, /Today Game/);
+  assert.match(source, /Latest Game/);
+  assert.match(source, /OFFICIAL DEEP DIVE/);
 });
 
-test('mobile presentation stays compact', () => {
+test('main UI uses official links instead of embedded Strike Zone data loading', () => {
+  assert.match(index, /smart-insight\.css\?v=20260814-insight-v2/);
+  assert.match(index, /smart-insight\.js\?v=20260814-insight-v2/);
+  assert.doesNotMatch(index, /pitch-analysis\.css/);
+  assert.doesNotMatch(index, /pitch-trial\.css/);
+  assert.doesNotMatch(index, /pitch-analysis\.js/);
+  assert.doesNotMatch(index, /pitch-trial\.js/);
+});
+
+test('mobile presentation keeps official links compact', () => {
   assert.match(css, /@media\(max-width:640px\)/);
   assert.match(css, /\.ai-insight-row/);
+  assert.match(css, /\.official-deep-dive/);
+  assert.match(css, /grid-template-columns:1fr 1fr/);
 });
