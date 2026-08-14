@@ -138,8 +138,9 @@ test('Manage search is open across MLB and MiLB and Taiwan identities are enrich
   assert.match(manager,/const SPORT_IDS=\[1,11,12,13,14,16\]/);
   assert.match(manager,/sports\/\$\{id\}\/players\?season=\$\{season\}/);
   assert.match(manager,/normalize\(p\.fullName\|\|p\.name\)\.includes\(n\)/);
-  assert.match(manager,/partialQuery/);
-  assert.match(manager,/directoryMatches\(q\)/);
+  assert.match(manager,/queryVariants\(q\)/);
+  assert.match(manager,/directoryMatches\(term\)/);
+  assert.match(manager,/rankPlayer\(a,q\)-rankPlayer\(b,q\)/);
   assert.match(manager,/people\/search\?names=\$\{encodeURIComponent\(name\)\}&hydrate=currentTeam/);
   assert.doesNotMatch(manager,/const TAIWAN_PLAYER_CATALOG=/);
 });
