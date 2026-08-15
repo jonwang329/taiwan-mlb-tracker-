@@ -6,7 +6,7 @@ const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新
 const MAX_MLB_REQUESTS=8;
 const OUTPUT_URL=new URL('../data/dashboard-snapshot.js',import.meta.url);
 const FALLBACK_URL=new URL('../tracked-players.json',import.meta.url);
-const {scheduleQueryWindow,gameTaiwanDate,isTaiwanTodayGame}=TaiwanGameTime;
+const {scheduleQueryWindow,gameTaiwanDate,isTaiwanTodayGame,taiwanDate}=TaiwanGameTime;
 let activeMlbRequests=0;
 const waitingMlbRequests=[];
 
@@ -75,6 +75,13 @@ function liveAppearance(player,stat={}){
     ? num(stat.battersFaced)>0||num(stat.pitchesThrown)>0||num(stat.inningsPitched)>0
     : num(stat.plateAppearances)>0||num(stat.atBats)>0||num(stat.runs)>0||num(stat.baseOnBalls)>0||num(stat.hitByPitch)>0||num(stat.sacFlies)>0||num(stat.sacBunts)>0;
 }
+function todayFromGameLogs(player,games,now=new Date()){
+  const {start,end}=scheduleQueryWindow(now);
+  const candidates=games.filter(game=>game?.date&&game.date>=start&&game.date<=end&&liveAppearance(player,game.stat||{}));
+  if(!candidates.length)return null;
+  const game=candidates[0];
+  return {...game,date:taiwanDate(now),stat:game.stat||{},game:game.game||{},live:false,source:'gameLog'};
+}
 async function fetchPerson(player){
   try{return (await freshJson(`${API}/people/${player.id}?hydrate=currentTeam`)).people?.[0]||{};}
   catch(error){console.warn(`[snapshot] Profile unavailable for ${player.name}: ${error.message}`);return {};}
@@ -134,9 +141,12 @@ async function loadPlayer(player){
   const latest=games[0]||null;
   const active=levels.find(level=>level.level===latest?.level)||levels.find(level=>level.season)||{};
   const teamIds=[latest?.team?.id,...games.slice(0,5).map(game=>game.team?.id),person.currentTeam?.id];
-  const officialToday=await fetchOfficialToday(player,teamIds,active.level||latest?.level||'—',active.sportId||1);
+  let officialToday=null;
+  try{officialToday=await fetchOfficialToday(player,teamIds,active.level||latest?.level||'—',active.sportId||1);}
+  catch(error){console.warn(`[snapshot] Today schedule lookup failed for ${player.name}: ${error.message}`);}
+  const gameLogToday=todayFromGameLogs(player,games);
   const compactLevels=levels.map(({sportId,level,season})=>({sportId,level,season,games:[]}));
-  return {levels:compactLevels,games:games.slice(0,5),latest,today:officialToday,season:active.season||{}};
+  return {levels:compactLevels,games:games.slice(0,5),latest,today:officialToday||gameLogToday,season:active.season||{}};
 }
 function meaningful(result){
   return Boolean(result?.today||result?.latest||result?.games?.length||result?.levels?.some(level=>level.season));
