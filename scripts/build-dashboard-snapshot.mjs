@@ -96,6 +96,10 @@ async function fetchLevel(player,[sportId,level]){
     return {sportId,level,season:null,games:[],failed:true};
   }
 }
+async function fetchTeamSportId(teamId){
+  const data=await freshJson(`${API}/teams/${teamId}`);
+  return data.teams?.[0]?.sport?.id||null;
+}
 async function fetchOfficialToday(player,teamIds,level){
   const ids=[...new Set(teamIds.filter(Boolean))].slice(0,6);
   if(!ids.length)return null;
@@ -108,7 +112,9 @@ async function fetchOfficialToday(player,teamIds,level){
   const seenGames=new Set();
   for(const teamId of ids){
     try{
-      const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
+      const sportId=await fetchTeamSportId(teamId);
+      if(!sportId)continue;
+      const schedule=await freshJson(`${API}/schedule?sportId=${sportId}&teamId=${teamId}&startDate=${start}&endDate=${end}`);
       scheduleChecks+=1;
       const games=(schedule.dates||[]).flatMap(date=>date.games||[]).filter(game=>isTaiwanTodayGame(game,now));
       const ordered=[...games].sort((a,b)=>{
