@@ -65,8 +65,7 @@ async function handleWebhook(request,env,ctx){
   const signature=request.headers.get('x-line-signature') || '';
   const valid=await verifyLineSignature(rawBody,signature,env.LINE_CHANNEL_SECRET);
 
-  // Diagnostic only: never store message text/body. This tells us whether LINE reached the Worker
-  // and whether the configured Channel Secret matches the signature.
+  // Diagnostic only: never store message text/body.
   await env.EDDIE_KV.put(latestWebhookAttemptKey,JSON.stringify({
     receivedAt:new Date().toISOString(),
     signaturePresent:Boolean(signature),
@@ -90,6 +89,22 @@ async function handleWebhook(request,env,ctx){
   return json({ok:true,received:events.length});
 }
 
+async function publicWebhookStatus(env){
+  const [attempt,user] = await Promise.all([
+    env.EDDIE_KV.get(latestWebhookAttemptKey,'json'),
+    env.EDDIE_KV.get(latestLineUserKey,'json')
+  ]);
+  return json({
+    webhookReached:Boolean(attempt?.receivedAt),
+    receivedAt:attempt?.receivedAt || null,
+    signaturePresent:Boolean(attempt?.signaturePresent),
+    signatureValid:Boolean(attempt?.signatureValid),
+    channelSecretConfigured:Boolean(env.LINE_CHANNEL_SECRET),
+    lineTokenConfigured:Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
+    lineUserCaptured:Boolean(user?.userId)
+  });
+}
+
 function page(state,token){
   const body=state.confirmed
     ? `<div class="confirmed">✓ Confirmed<br>${state.confirmed}</div><p class="muted">其他候選時段已自動釋放。</p>`
@@ -109,6 +124,7 @@ export default { async fetch(request,env,ctx){
   });
 
   if(url.pathname==='/webhook') return handleWebhook(request,env,ctx);
+  if(url.pathname==='/webhook-status') return publicWebhookStatus(env);
 
   const token=url.searchParams.get('token');
   if(!token || token!==env.EDDIE_TEST_TOKEN) return json({error:'unauthorized'},401);
