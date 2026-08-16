@@ -102,3 +102,11 @@ jobs:
           state=$(curl -fsS "$URL/coach-status")
           echo "$state" | jq .
           echo "$state" | jq -e '.name == "Kevin" and .status == "offered" and (.offers|length) == 2 and .linePushPolicy == "offer-only"' >/dev/null
+
+      - name: Verify Kevin confirmation persisted
+        if: github.event.head_commit.message == 'Check Kevin confirmed'
+        run: |
+          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
+          state=$(curl -fsS "$URL/coach-status")
+          echo "$state" | jq .
+          echo "$state" | jq -e '.name == "Kevin" and .status == "confirmed" and (.offers|length) == 1 and (.released|length) == 1 and (.confirmed|length) > 0 and .linePushPolicy == "offer-only" and .confirmAttempt.linkFound == true and .confirmAttempt.slotPresent == true' >/dev/null
