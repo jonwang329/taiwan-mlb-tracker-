@@ -1,0 +1,52 @@
+name: Eddie LINE sandbox smoke test
+
+on:
+  push:
+    branches: [eddie-line-sandbox]
+    paths:
+      - '.github/workflows/eddie-line-smoke-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  send-eddie-test:
+    if: github.event.head_commit.message == 'EDDIE LINE smoke test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify sandbox LINE secrets
+        env:
+          HAS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN != '' }}
+          HAS_DESTINATION: ${{ secrets.LINE_DESTINATION_ID != '' || secrets.LINE_USER_ID != '' }}
+        run: |
+          echo "LINE token configured: $HAS_TOKEN; destination configured: $HAS_DESTINATION"
+          [[ "$HAS_TOKEN" == "true" ]]
+          [[ "$HAS_DESTINATION" == "true" ]]
+
+      - name: Send isolated Eddie smoke test
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: |
+          DEST="${LINE_DESTINATION_ID:-$LINE_USER_ID}"
+          BODY=$(python3 - <<'PY'
+          import json
+          print(json.dumps({
+            "to": __import__('os').environ.get('LINE_DESTINATION_ID') or __import__('os').environ.get('LINE_USER_ID'),
+            "messages": [{
+              "type": "text",
+              "text": "[EDDIE TEST] Project Eddie LINE sandbox is connected. Coach → LINE delivery path OK. This test did not read or change MLB player data, schedules, or notification state."
+            }]
+          }))
+          PY
+          )
+          HTTP=$(curl -sS -o /tmp/line-response.txt -w '%{http_code}' \
+            -X POST 'https://api.line.me/v2/bot/message/push' \
+            -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data "$BODY")
+          cat /tmp/line-response.txt
+          echo "HTTP $HTTP"
+          test "$HTTP" = "200"
