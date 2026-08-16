@@ -70,7 +70,7 @@ jobs:
           for attempt in $(seq 1 10); do
             health=$(curl -sS "$URL/health" || true)
             echo "attempt $attempt health=$health"
-            if echo "$health" | jq -e '.ok == true and .deployNonceConfigured == true' >/dev/null 2>&1; then
+            if echo "$health" | jq -e '.ok == true and .deployNonceConfigured == true and .confirmMode == "native-form"' >/dev/null 2>&1; then
               exit 0
             fi
             sleep 2
@@ -85,7 +85,7 @@ jobs:
           echo "$config" | jq -e '.active == true and .endpointMatchesExpected == true' >/dev/null
 
       - name: Pair captured Jon as sandbox coach
-        if: github.event.head_commit.message == 'Test coach confirm notification'
+        if: github.event.head_commit.message == 'Send native-form Eddie test'
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           result=$(curl -fsS -X POST \
@@ -95,7 +95,7 @@ jobs:
           echo "$result" | jq -e '.ok == true and .userIdStored == true' >/dev/null
 
       - name: Send fresh scheduling test
-        if: github.event.head_commit.message == 'Test coach confirm notification'
+        if: github.event.head_commit.message == 'Send native-form Eddie test'
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           result=$(curl -fsS -X POST \
@@ -105,7 +105,7 @@ jobs:
           echo "$result" | jq -e '.ok == true and .offerCount == 2 and .lineStatus >= 200 and .lineStatus < 300' >/dev/null
 
       - name: Verify coach is paired and state is Offered
-        if: github.event.head_commit.message == 'Test coach confirm notification'
+        if: github.event.head_commit.message == 'Send native-form Eddie test'
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           state=$(curl -fsS "$URL/coach-status")
