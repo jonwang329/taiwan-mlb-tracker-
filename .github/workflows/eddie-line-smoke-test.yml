@@ -64,8 +64,16 @@ jobs:
 
       - name: Verify Eddie portal
         run: |
-          curl -fsS "$EDDIE_URL/health" | jq -e '.ok == true'
-          curl -fsS "$EDDIE_URL/api/student?token=$EDDIE_TEST_TOKEN" | jq -e '.name == "Jon" and (.offers|length) == 2 and .confirmed == null'
+          for attempt in $(seq 1 10); do
+            health=$(curl -sS "$EDDIE_URL/health" || true)
+            state=$(curl -sS "$EDDIE_URL/?token=$EDDIE_TEST_TOKEN&format=json" || true)
+            echo "attempt $attempt health=$health state=$state"
+            if echo "$health" | jq -e '.ok == true' >/dev/null 2>&1 && echo "$state" | jq -e '.name == "Jon" and (.offers|length) == 2 and .confirmed == null' >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
 
       - name: Send Eddie Student Portal link through MLB LINE sandbox
         env:
@@ -74,7 +82,7 @@ jobs:
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
         run: |
           export DEST="${LINE_DESTINATION_ID:-$LINE_USER_ID}"
-          export STUDENT_URL="$EDDIE_URL/student?token=$EDDIE_TEST_TOKEN"
+          export STUDENT_URL="$EDDIE_URL/?token=$EDDIE_TEST_TOKEN"
           BODY=$(python3 - <<'PY'
           import json, os
           text = "[EDDIE TEST] Hi Jon 👋\nCoach 提供兩個時段給你。請點下面連結，選一個時間後按 Confirm：\n" + os.environ['STUDENT_URL'] + "\n\n這是測試訊息；不會改動 MLB 球員資料或排程。"
@@ -86,4 +94,4 @@ jobs:
           echo "HTTP $HTTP"
           test "$HTTP" = "200"
           echo "Student URL: $STUDENT_URL"
-          echo "Coach check: $EDDIE_URL/api/coach?token=$EDDIE_TEST_TOKEN"
+          echo "Coach check: $EDDIE_URL/?token=$EDDIE_TEST_TOKEN&format=json"
