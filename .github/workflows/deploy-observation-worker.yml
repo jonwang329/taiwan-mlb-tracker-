@@ -1,4 +1,4 @@
-# Deployment trigger: 2026-08-12
+# Deployment trigger: 2026-08-17
 # The legacy /internal/line-test endpoint remains available for manual diagnosis; deployment never calls it.
 name: Deploy observation Worker
 
@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'cloudflare/observation-worker.js'
+      - 'cloudflare/observation-worker-safe.js'
       - 'cloudflare/line-worker.js'
       - 'cloudflare/line-flex-worker.js'
       - 'cloudflare/line-worker-single-cron.js'
@@ -45,8 +46,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OWNER_PASSWORD: ${{ secrets.OWNER_PASSWORD }}
         run: |
-          # Optional friendly owner password. The plaintext secret never enters the repository
-          # or Cloudflare Worker source: only its SHA-256 is substituted in the ephemeral runner copy.
           if [ -n "$OWNER_PASSWORD" ]; then
             owner_hash=$(printf '%s' "$OWNER_PASSWORD" | sha256sum | awk '{print $1}')
             sed -Ei "s/const OWNER_KEY_SHA256 = '[a-f0-9]{64}';/const OWNER_KEY_SHA256 = '$owner_hash';/" cloudflare/observation-worker.js
@@ -69,7 +68,7 @@ jobs:
 
           cat > wrangler.observation.toml <<EOF
           name = "taiwan-mlb-observation-list"
-          main = "cloudflare/observation-worker.js"
+          main = "cloudflare/observation-worker-safe.js"
           compatibility_date = "2026-08-12"
           account_id = "$CLOUDFLARE_ACCOUNT_ID"
           workers_dev = true
@@ -77,6 +76,9 @@ jobs:
           [[kv_namespaces]]
           binding = "OBSERVATION_LIST"
           id = "$namespace_id"
+
+          [triggers]
+          crons = []
           EOF
 
           cat > wrangler.line-clear.toml <<EOF
@@ -171,4 +173,5 @@ jobs:
         run: |
           curl -fsS "$OBSERVATION_URL/players" | jq -e '.players | length > 0'
           echo "Observation API: $OBSERVATION_URL"
+          echo "Legacy observation cron: explicitly disabled"
           echo "LINE scheduler: one Cloudflare cron covering 07:00, 08:00, 09:00, 12:00 Asia/Taipei"
