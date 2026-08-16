@@ -1,5 +1,4 @@
-# Eddie E2E scheduling sandbox
-# final test trigger 2026-08-16
+# Eddie V3 scheduling sandbox deploy
 name: Eddie LINE sandbox deploy
 
 on:
@@ -7,7 +6,9 @@ on:
     branches: [eddie-line-sandbox]
     paths:
       - '.github/workflows/eddie-line-smoke-test.yml'
-      - 'cloudflare/eddie-sandbox-worker.js'
+      - 'cloudflare/eddie-sandbox-worker-v3.js'
+      - 'cloudflare/eddie-scheduling-core.mjs'
+      - 'cloudflare/eddie-regression-test.mjs'
 
 permissions:
   contents: read
@@ -22,6 +23,14 @@ jobs:
         with:
           node-version: 22
 
+      - name: Run Eddie scheduling regression gate
+        run: |
+          node cloudflare/eddie-regression-test.mjs
+
+      - name: Verify Worker syntax
+        run: |
+          node --check cloudflare/eddie-sandbox-worker-v3.js
+
       - name: Verify Cloudflare secrets
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -30,7 +39,7 @@ jobs:
           test -n "$CF_TOKEN"
           test -n "$CF_ACCOUNT"
 
-      - name: Deploy isolated Eddie Worker
+      - name: Deploy isolated Eddie Worker V3
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -38,31 +47,26 @@ jobs:
           npm install --no-save wrangler@4
           namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="eddie-line-sandbox") | .id' | head -1)
           test -n "$namespace_id" && test "$namespace_id" != "null"
-          deploy_nonce=$(openssl rand -hex 24)
-          echo "EDDIE_DEPLOY_NONCE=$deploy_nonce" >> "$GITHUB_ENV"
           cat > wrangler.eddie.toml <<EOF
           name = "eddie-line-sandbox"
-          main = "cloudflare/eddie-sandbox-worker.js"
+          main = "cloudflare/eddie-sandbox-worker-v3.js"
           compatibility_date = "2026-08-16"
           account_id = "$CLOUDFLARE_ACCOUNT_ID"
           workers_dev = true
           keep_vars = true
-          [vars]
-          EDDIE_TEST_ID = "live-test"
-          EDDIE_DEPLOY_NONCE = "$deploy_nonce"
           [[kv_namespaces]]
           binding = "EDDIE_KV"
           id = "$namespace_id"
           EOF
           npx wrangler deploy --config wrangler.eddie.toml
 
-      - name: Verify Eddie Worker is offer-only
+      - name: Verify Eddie V3 health and frozen core
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           for attempt in $(seq 1 10); do
             health=$(curl -sS "$URL/health" || true)
             echo "attempt $attempt health=$health"
-            if echo "$health" | jq -e '.ok == true and .confirmMode == "native-form" and .linePushPolicy == "offer-only"' >/dev/null 2>&1; then exit 0; fi
+            if echo "$health" | jq -e '.ok == true and .confirmMode == "native-form" and .linePushPolicy == "offer-only" and .coreVersion == "v3" and .regression.ok == true' >/dev/null 2>&1; then exit 0; fi
             sleep 2
           done
           exit 1
@@ -74,40 +78,9 @@ jobs:
           echo "$config" | jq .
           echo "$config" | jq -e '.active == true and .endpointMatchesExpected == true' >/dev/null
 
-      - name: Verify latest LINE user is Kevin
-        if: github.event.head_commit.message == 'Send Kevin offer-only test'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="eddie-line-sandbox") | .id' | head -1)
-          latest=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$namespace_id/values/line%3Alatest-user")
-          echo "$latest" | jq '{displayName,status,lastEventType,lastSeenAt,userIdPresent:(.userId|length>0)}'
-          echo "$latest" | jq -e '.displayName == "Kevin" and .status == "active" and (.userId|length>0)' >/dev/null
-
-      - name: Send one scheduling invitation to Kevin
-        if: github.event.head_commit.message == 'Send Kevin offer-only test'
+      - name: Verify dashboard uses shared week
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
-          result=$(curl -fsS -X POST \
-            -H "x-eddie-deploy-nonce: $EDDIE_DEPLOY_NONCE" \
-            "$URL/internal/send-demo")
-          echo "$result" | jq '{ok,recipient,offerCount,lineStatus,linePushPolicy}'
-          echo "$result" | jq -e '.ok == true and .recipient == "Kevin" and .offerCount == 2 and .lineStatus >= 200 and .lineStatus < 300 and .linePushPolicy == "offer-only"' >/dev/null
-
-      - name: Verify Dashboard state is Offered
-        if: github.event.head_commit.message == 'Send Kevin offer-only test'
-        run: |
-          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
-          state=$(curl -fsS "$URL/coach-status")
-          echo "$state" | jq .
-          echo "$state" | jq -e '.name == "Kevin" and .status == "offered" and (.offers|length) == 2 and .linePushPolicy == "offer-only"' >/dev/null
-
-      - name: Verify Kevin confirmation persisted
-        if: github.event.head_commit.message == 'Check Kevin confirmed'
-        run: |
-          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
-          state=$(curl -fsS "$URL/coach-status")
-          echo "$state" | jq .
-          echo "$state" | jq -e '.name == "Kevin" and .status == "confirmed" and (.offers|length) == 1 and (.released|length) == 1 and (.confirmed|length) > 0 and .linePushPolicy == "offer-only" and .confirmAttempt.linkFound == true and .confirmAttempt.slotPresent == true' >/dev/null
+          state=$(curl -fsS "$URL/api/dashboard")
+          echo "$state" | jq '{core,linePushPolicy,studentCount:(.students|length),confirmedSlots:(.week.confirmed|length),heldSlots:(.week.holds|length)}'
+          echo "$state" | jq -e '.core == "student-module-shared-week-v3" and (.students|length) > 0 and (.week.confirmed|type) == "object" and (.week.holds|type) == "object"' >/dev/null
