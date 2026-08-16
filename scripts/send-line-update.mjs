@@ -43,27 +43,26 @@ function todayPlayers(snapshot) { return (snapshot.players || []).filter(p => p.
 function flexText(text, size="sm", weight="regular", color="#333333", wrap=true) { return {type:"text", text:String(text), size, weight, color, wrap}; }
 function buildFlex(snapshot) {
   const active = todayPlayers(snapshot);
-  const contents = [
-    {type:"box", layout:"horizontal", alignItems:"center", contents:[
-      flexText("🇹🇼⚾ TMLB Tracker","lg","bold","#111111"),
+  const header = {type:"box",layout:"vertical",backgroundColor:"#0B3A82",paddingAll:"20px",spacing:"sm",contents:[
+    {type:"box",layout:"horizontal",alignItems:"center",contents:[
+      flexText("🇹🇼⚾ TMLB Tracker","lg","bold","#FFFFFF"),
       {type:"box",layout:"vertical",flex:0,backgroundColor:"#E53935",cornerRadius:"10px",paddingAll:"6px",contents:[{type:"text",text:"LIVE",size:"xs",weight:"bold",color:"#FFFFFF",align:"center"}]}
     ]},
-    flexText(`${snapshot.date}  今日出賽 ${active.length} 位`,"sm","regular","#777777")
-  ];
-  if (!active.length) contents.push({type:"separator",margin:"lg"}, flexText("目前沒有追蹤球員在今天出賽。","md","bold","#222222"));
+    flexText(`${snapshot.date}  今日出賽 ${active.length} 位`,"sm","regular","#DCE8FA")
+  ]};
+  const contents = [];
+  if (!active.length) contents.push(flexText("目前沒有追蹤球員在今天出賽。","md","bold","#222222"));
   for (const p of active) {
     const live = p.liveSource || String(p.gameStatus||"").includes("LIVE");
-    contents.push(
-      {type:"separator",margin:"lg"},
-      {type:"box",layout:"vertical",margin:"lg",spacing:"sm",contents:[
-        {type:"box",layout:"horizontal",contents:[flexText(p.name,"md","bold","#111111"), flexText(live?"● LIVE":"FINAL","xs","bold",live?"#E53935":"#777777",false)]},
-        flexText(`${p.team} · ${p.level}`,"xs","regular","#777777"),
-        flexText(p.performance,"lg","bold","#111111"),
-        flexText(`球季  ${p.season}`,"xs","regular","#777777")
-      ]}
-    );
+    if (contents.length) contents.push({type:"separator",margin:"lg"});
+    contents.push({type:"box",layout:"vertical",margin:contents.length?"lg":"none",spacing:"sm",contents:[
+      {type:"box",layout:"horizontal",contents:[flexText(p.name,"md","bold","#111111"), flexText(live?"● LIVE":"FINAL","xs","bold",live?"#E53935":"#777777",false)]},
+      flexText(`${p.team} · ${p.level}`,"xs","regular","#777777"),
+      flexText(p.performance,"lg","bold","#111111"),
+      flexText(`球季  ${p.season}`,"xs","regular","#777777")
+    ]});
   }
-  return {type:"flex",altText:`Taiwan MLB Tracker｜${snapshot.date} 今日出賽 ${active.length} 位`,contents:{type:"bubble",size:"mega",body:{type:"box",layout:"vertical",spacing:"md",paddingAll:"20px",contents}}};
+  return {type:"flex",altText:`Taiwan MLB Tracker｜${snapshot.date} 今日出賽 ${active.length} 位`,contents:{type:"bubble",size:"mega",header,body:{type:"box",layout:"vertical",spacing:"md",paddingAll:"20px",contents}}};
 }
 
 let deliveredNow = false;
