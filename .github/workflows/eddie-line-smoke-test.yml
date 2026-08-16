@@ -9,6 +9,7 @@ on:
       - 'cloudflare/eddie-sandbox-worker-v3.js'
       - 'cloudflare/eddie-scheduling-core.mjs'
       - 'cloudflare/eddie-regression-test.mjs'
+      - 'cloudflare/eddie-v3-ui-hotfix.mjs'
 
 permissions:
   contents: read
@@ -22,6 +23,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Apply frozen Eddie UI interaction hotfix
+        run: |
+          node cloudflare/eddie-v3-ui-hotfix.mjs
 
       - name: Run Eddie scheduling regression gate
         run: |
