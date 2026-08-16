@@ -65,7 +65,6 @@ async function handleWebhook(request,env,ctx){
   const signature=request.headers.get('x-line-signature') || '';
   const valid=await verifyLineSignature(rawBody,signature,env.LINE_CHANNEL_SECRET);
 
-  // Diagnostic only: never store message text/body.
   await env.EDDIE_KV.put(latestWebhookAttemptKey,JSON.stringify({
     receivedAt:new Date().toISOString(),
     signaturePresent:Boolean(signature),
@@ -105,6 +104,26 @@ async function publicWebhookStatus(env){
   });
 }
 
+async function publicLineWebhookConfig(request,env){
+  if(!env.LINE_CHANNEL_ACCESS_TOKEN) return json({ok:false,reason:'token-missing'},503);
+  try{
+    const r=await fetch('https://api.line.me/v2/bot/channel/webhook/endpoint',{
+      headers:{Authorization:`Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`}
+    });
+    const body=await r.json().catch(()=>({}));
+    const expected=`${new URL(request.url).origin}/webhook`;
+    return json({
+      ok:r.ok,
+      active:body.active === true,
+      endpointConfigured:Boolean(body.endpoint),
+      endpointMatchesExpected:body.endpoint === expected,
+      httpStatus:r.status
+    }, r.ok?200:502);
+  }catch{
+    return json({ok:false,reason:'line-api-unreachable'},502);
+  }
+}
+
 function page(state,token){
   const body=state.confirmed
     ? `<div class="confirmed">✓ Confirmed<br>${state.confirmed}</div><p class="muted">其他候選時段已自動釋放。</p>`
@@ -125,6 +144,7 @@ export default { async fetch(request,env,ctx){
 
   if(url.pathname==='/webhook') return handleWebhook(request,env,ctx);
   if(url.pathname==='/webhook-status') return publicWebhookStatus(env);
+  if(url.pathname==='/line-webhook-config') return publicLineWebhookConfig(request,env);
 
   const token=url.searchParams.get('token');
   if(!token || token!==env.EDDIE_TEST_TOKEN) return json({error:'unauthorized'},401);
