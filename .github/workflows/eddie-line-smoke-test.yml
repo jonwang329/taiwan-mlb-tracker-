@@ -1,4 +1,4 @@
-# Eddie webhook diagnostics
+# Eddie webhook diagnostics - recheck after activation
 name: Eddie LINE sandbox deploy
 
 on:
