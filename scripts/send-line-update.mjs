@@ -23,52 +23,57 @@ let previous = null;
 try { previous = JSON.parse(await readFile(statePath, "utf8")); } catch (error) { if (error.code !== "ENOENT") throw error; }
 const deliveries = previous?._deliveries && typeof previous._deliveries === "object" ? previous._deliveries : {};
 const plannedDeliveryKey = !isTest && slot ? `${taiwanDate()}:${slot}` : "";
-if (plannedDeliveryKey && deliveries[plannedDeliveryKey]) {
-  console.log(`[line] Slot ${slot} was already delivered today; retry suppressed before MLB data fetch.`);
-  process.exit(0);
-}
+if (plannedDeliveryKey && deliveries[plannedDeliveryKey]) { console.log(`[line] Slot ${slot} was already delivered today; retry suppressed before MLB data fetch.`); process.exit(0); }
 
 console.log("[data] Loading shared tracked-player list and official MLB / MiLB data...");
 const current = await collectSnapshot({previous});
-console.log(`[data] Loaded ${current.players.length} players; Taiwan report date ${current.date}; schedule query ${current.scheduleWindow?.start || "—"}..${current.scheduleWindow?.end || "—"}; stale players ${current.stalePlayers || 0}.`);
+console.log(`[data] Loaded ${current.players.length} players; Taiwan report date ${current.date}; stale players ${current.stalePlayers || 0}.`);
 const summaryPeriod = mode === "morning" ? "morning" : "final";
 const deliveryKey = !isTest && slot ? `${current.date}:${slot}` : "";
 const alreadyDelivered = Boolean(deliveryKey && deliveries[deliveryKey]);
 const changed = hasChanges(previous, current);
 let shouldSend = isTest || (!alreadyDelivered && (deliveryKey ? true : mode !== "changes" || changed));
 let message = "";
-
 if (isTest) message = formatSummary(current, summaryPeriod, true);
 else if (mode !== "changes") message = formatSummary(current, summaryPeriod, false);
 else if (previous && changed) message = formatChanges(previous, current, false);
-else if (deliveryKey) {
-  const taiwanTime = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", dateStyle: "short", timeStyle: "short", hour12: false }).format(new Date());
-  message = previous
-    ? `⚾ Taiwan MLB Tracker\n${taiwanTime} update check completed.\nNo new player changes since the previous update.`
-    : `⚾ Taiwan MLB Tracker\n${taiwanTime} update check completed.\nCurrent player data was loaded and the baseline has been saved.`;
+else if (deliveryKey) message = `⚾ Taiwan MLB Tracker\nUpdate check completed. No new player changes.`;
+
+function todayPlayers(snapshot) { return (snapshot.players || []).filter(p => p.played && p.gameDate === snapshot.date); }
+function flexText(text, size="sm", weight="regular", color="#333333", wrap=true) { return {type:"text", text:String(text), size, weight, color, wrap}; }
+function buildFlex(snapshot) {
+  const active = todayPlayers(snapshot);
+  const contents = [
+    {type:"box", layout:"horizontal", contents:[flexText("🇹🇼⚾ TMLB Tracker","lg","bold","#111111"), {type:"text",text:"LIVE",size:"xs",weight:"bold",color:"#FFFFFF",align:"center",gravity:"center",flex:0,backgroundColor:"#E53935",paddingAll:"6px",cornerRadius:"10px"}]},
+    flexText(`${snapshot.date}  今日出賽 ${active.length} 位`,"sm","regular","#777777")
+  ];
+  if (!active.length) contents.push({type:"separator",margin:"lg"}, flexText("目前沒有追蹤球員在今天出賽。","md","bold","#222222"));
+  for (const p of active) {
+    const live = p.liveSource || String(p.gameStatus||"").includes("LIVE");
+    contents.push(
+      {type:"separator",margin:"lg"},
+      {type:"box",layout:"vertical",margin:"lg",spacing:"sm",contents:[
+        {type:"box",layout:"horizontal",contents:[flexText(p.name,"md","bold","#111111"), flexText(live?"● LIVE":"FINAL","xs","bold",live?"#E53935":"#777777",false)]},
+        flexText(`${p.team} · ${p.level}`,"xs","regular","#777777"),
+        flexText(p.performance,"lg","bold","#111111"),
+        flexText(`球季  ${p.season}`,"xs","regular","#777777")
+      ]}
+    );
+  }
+  return {type:"flex",altText:`Taiwan MLB Tracker｜${snapshot.date} 今日出賽 ${active.length} 位`,contents:{type:"bubble",size:"mega",body:{type:"box",layout:"vertical",spacing:"md",paddingAll:"20px",contents}}};
 }
-if (message) console.log(`[message] Generated ${message.length} characters.`);
 
 let deliveredNow = false;
 if (shouldSend) {
-  if (!message) message = isTest ? formatSummary(current, summaryPeriod, true) : `⚾ Taiwan MLB Tracker\nUpdate check completed.`;
+  if (!message) message = formatSummary(current, summaryPeriod, isTest);
   if (message.length > 5000) throw new Error(`LINE message exceeds 5,000 characters (${message.length}).`);
-  if (dryRun) console.log(`Dry run: would send ${isTest ? "TEST " : ""}${mode} message.`);
+  if (dryRun) console.log(`Dry run: would send ${isTest ? "TEST Flex" : mode} message.`);
   else {
-    console.log(`[line] Send attempt UTC: ${new Date().toISOString()}`);
-    console.log(`[line] Send attempt Taiwan: ${new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Taipei", dateStyle:"short", timeStyle:"medium", hour12:false}).format(new Date())}`);
-    const response = await fetch("https://api.line.me/v2/bot/message/push", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ to: destination, messages: [{ type: "text", text: message }] }),
-    });
+    const lineMessage = isTest ? buildFlex(current) : {type:"text",text:message};
+    const response = await fetch("https://api.line.me/v2/bot/message/push", {method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify({to:destination,messages:[lineMessage]})});
     console.log(`[line] LINE API response status: ${response.status} ${response.statusText || ""}`.trim());
-    if (!response.ok) {
-      const requestId = response.headers?.get?.("x-line-request-id");
-      throw new Error(`LINE rejected the notification (${response.status})${requestId ? `; request ID ${requestId}` : ""}.`);
-    }
-    deliveredNow = true;
-    console.log("[line] Notification succeeded.");
+    if (!response.ok) { const detail = await response.text(); throw new Error(`LINE rejected notification (${response.status}): ${detail}`); }
+    deliveredNow = true; console.log("[line] Notification succeeded.");
   }
 } else if (alreadyDelivered) console.log(`[line] Slot ${slot} was already delivered today; retry suppressed.`);
 else console.log(previous ? "No tracked data changed; no LINE message sent." : "Initial baseline saved; no LINE message sent.");
