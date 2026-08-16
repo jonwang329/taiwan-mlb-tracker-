@@ -82,6 +82,6 @@ test('snapshot workflow only commits the data file and cannot loop on itself',as
   assert.match(workflow,/paths-ignore:\s*\n\s*- 'data\/dashboard-snapshot\.js'/);
   assert.match(workflow,/git add data\/dashboard-snapshot\.js/);
   assert.match(workflow,/git diff --quiet -- data\/dashboard-snapshot\.js/);
-  assert.match(workflow,/3,18,33,48 \* \* \* \*/);
+  assert.match(workflow,/7,17,27,37,47,57 \* \* \* \*/);
   assert.doesNotMatch(workflow,/send-line-update|line-daily-updates/i);
 });
