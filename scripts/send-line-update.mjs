@@ -44,7 +44,10 @@ function flexText(text, size="sm", weight="regular", color="#333333", wrap=true)
 function buildFlex(snapshot) {
   const active = todayPlayers(snapshot);
   const contents = [
-    {type:"box", layout:"horizontal", contents:[flexText("🇹🇼⚾ TMLB Tracker","lg","bold","#111111"), {type:"text",text:"LIVE",size:"xs",weight:"bold",color:"#FFFFFF",align:"center",gravity:"center",flex:0,backgroundColor:"#E53935",paddingAll:"6px",cornerRadius:"10px"}]},
+    {type:"box", layout:"horizontal", alignItems:"center", contents:[
+      flexText("🇹🇼⚾ TMLB Tracker","lg","bold","#111111"),
+      {type:"box",layout:"vertical",flex:0,backgroundColor:"#E53935",cornerRadius:"10px",paddingAll:"6px",contents:[{type:"text",text:"LIVE",size:"xs",weight:"bold",color:"#FFFFFF",align:"center"}]}
+    ]},
     flexText(`${snapshot.date}  今日出賽 ${active.length} 位`,"sm","regular","#777777")
   ];
   if (!active.length) contents.push({type:"separator",margin:"lg"}, flexText("目前沒有追蹤球員在今天出賽。","md","bold","#222222"));
