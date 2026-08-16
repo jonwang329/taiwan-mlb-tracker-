@@ -11,11 +11,12 @@ test('website passes active MLB or MiLB sportId into official schedule query',as
   assert.match(app,/active\.sportId\|\|1/);
 });
 
-test('central snapshot passes active MLB or MiLB sportId into official schedule query',async()=>{
+test('central snapshot resolves each candidate team sportId before querying the official schedule',async()=>{
   const builder=await read('scripts/build-dashboard-snapshot.mjs');
-  assert.match(builder,/schedule\?sportId=\$\{sportId\|\|1\}&teamId=\$\{teamId\}&startDate=\$\{start\}&endDate=\$\{end\}/);
+  assert.match(builder,/async function fetchTeamSportId\(teamId\)/);
+  assert.match(builder,/const sportId=await fetchTeamSportId\(teamId\)/);
+  assert.match(builder,/schedule\?sportId=\$\{sportId\}&teamId=\$\{teamId\}&startDate=\$\{start\}&endDate=\$\{end\}/);
   assert.match(builder,/return \{sportId,level,season:/);
-  assert.match(builder,/active\.sportId\|\|1/);
 });
 
 test('LINE collector passes current level sportId into official schedule query',async()=>{
