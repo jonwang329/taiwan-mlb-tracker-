@@ -84,8 +84,18 @@ jobs:
           echo "$config" | jq .
           echo "$config" | jq -e '.active == true and .endpointMatchesExpected == true' >/dev/null
 
-      - name: Send Eddie scheduling test to captured Jon
-        if: github.event.head_commit.message == 'Send Eddie scheduling test'
+      - name: Pair captured Jon as sandbox coach
+        if: github.event.head_commit.message == 'Test coach confirm notification'
+        run: |
+          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
+          result=$(curl -fsS -X POST \
+            -H "x-eddie-deploy-nonce: $EDDIE_DEPLOY_NONCE" \
+            "$URL/internal/pair-latest-as-coach")
+          echo "$result" | jq '{ok,coach,userIdStored}'
+          echo "$result" | jq -e '.ok == true and .userIdStored == true' >/dev/null
+
+      - name: Send fresh scheduling test
+        if: github.event.head_commit.message == 'Test coach confirm notification'
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           result=$(curl -fsS -X POST \
@@ -94,10 +104,10 @@ jobs:
           echo "$result" | jq '{ok,recipient,offerCount,lineStatus}'
           echo "$result" | jq -e '.ok == true and .offerCount == 2 and .lineStatus >= 200 and .lineStatus < 300' >/dev/null
 
-      - name: Verify coach state is Offered
-        if: github.event.head_commit.message == 'Send Eddie scheduling test'
+      - name: Verify coach is paired and state is Offered
+        if: github.event.head_commit.message == 'Test coach confirm notification'
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           state=$(curl -fsS "$URL/coach-status")
           echo "$state" | jq .
-          echo "$state" | jq -e '.status == "offered" and (.offers|length) == 2' >/dev/null
+          echo "$state" | jq -e '.status == "offered" and (.offers|length) == 2 and .coachPaired == true' >/dev/null
