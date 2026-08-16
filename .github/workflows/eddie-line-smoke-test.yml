@@ -71,3 +71,16 @@ jobs:
             sleep 2
           done
           exit 1
+
+      - name: Check latest LINE webhook user
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="eddie-line-sandbox") | .id' | head -1)
+          latest=$(npx wrangler kv key get --namespace-id "$namespace_id" 'line:latest-user' --text --remote 2>/dev/null || true)
+          if [ -z "$latest" ]; then
+            echo "NO_LATEST_LINE_USER"
+          else
+            echo "$latest" | jq '{displayName,status,lastEventType,lastSeenAt,userIdPresent:(.userId|length>0)}'
+          fi
