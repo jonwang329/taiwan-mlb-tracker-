@@ -1,4 +1,4 @@
-# webhook recheck after Jon sent message
+# Eddie webhook diagnostics
 name: Eddie LINE sandbox deploy
 
 on:
@@ -72,6 +72,12 @@ jobs:
             sleep 2
           done
           exit 1
+
+      - name: Read safe webhook diagnostics
+        run: |
+          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
+          status=$(curl -fsS "$URL/webhook-status")
+          echo "$status" | jq .
 
       - name: Check latest LINE webhook user
         env:
