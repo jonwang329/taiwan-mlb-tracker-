@@ -22,6 +22,11 @@ rep(
 'student wording');
 
 rep(
+".cell.selected,.cell.heldMine{background:var(--pink);border:1px solid var(--pinkBorder);color:var(--pinkInk)}",
+".cell.selected,.cell.heldMine{background:var(--pink);border:1px solid var(--pinkBorder);color:var(--pinkInk)}.cell.override{background:linear-gradient(135deg,var(--pink) 0 72%,var(--blueSoft) 72% 100%);border:2px solid var(--pinkBorder);color:var(--pinkInk)}",
+'coach option style');
+
+rep(
 "let state=null,students=[],studentId=null,selected=[],pin=localStorage.getItem('eddie-coach-pin')||'',draftBusy=false;",
 "let state=null,students=[],studentId=null,selected=[],pin=localStorage.getItem('eddie-coach-pin')||'',dirty=new Set(),draftTimer=null,persistChain=Promise.resolve(),lastEditAt=0;",
 'ui state');
@@ -32,9 +37,19 @@ rep(
 'student switch');
 
 rep(
+"let cl=mineC?'confirmed':c?'confirmed':blocked?'heldOther':mineH?'heldMine':sel?'selected':dinner?'dinner':'';",
+"const coachOpt=(mineH||sel)&&x.includes(' 18:00–19:00');let cl=mineC?'confirmed':c?'confirmed':blocked?'heldOther':mineH?(coachOpt?'override':'heldMine'):sel?(coachOpt?'override':'selected'):dinner?'dinner':'';",
+'coach option class');
+
+rep(
 "let title=mineC?'✓ 已確認':c?'✓ '+c.name:blocked?(hold.type==='fixed'?'固定｜':'保留｜')+hold.name:mineH?'已選｜'+s.name:sel?'已選':dinner?'教練晚餐':'可排';",
-"let title=mineC?'✓ 已確認':c?'✓ '+c.name:blocked?(hold.type==='fixed'?'固定｜':'保留｜')+hold.name:mineH?'× 已選｜'+s.name:sel?'× 已選':dinner?'教練晚餐':'○ 可排';",
-'circle cross labels');
+"let title=mineC?'✓ 已確認':c?'✓ '+c.name:blocked?(hold.type==='fixed'?'固定｜':'保留｜')+hold.name:mineH?(coachOpt?'★ 教練特別選項｜'+s.name:'× 已選｜'+s.name):sel?(coachOpt?'★ 教練特別選項':'× 已選'):dinner?'🍽 教練晚餐':'○ 可排';",
+'circle cross and coach option labels');
+
+rep(
+"<small>'+hh(h)+'–'+hh(h+1)+'</small>",
+"<small>'+(coachOpt?'Coach option · ':'')+hh(h)+'–'+hh(h+1)+'</small>",
+'coach option subtitle');
 
 const oldClick="document.querySelectorAll('[data-slot]').forEach(el=>el.onclick=async()=>{const s=current();if(!s||draftBusy)return;if(s.status==='confirmed'){toast('本週已確認，不能直接改動');return}if(el.dataset.blocked==='true'){toast('這個時段已被其他學員佔用');return}if(s.mode==='free'){toast('自由選空檔由學生從剩餘時段選擇');return}const x=el.dataset.slot;let next=[...selected];if(next.includes(x))next=next.filter(v=>v!==x);else{if(next.length>=s.sessions)next=next.slice(1);next.push(x)}await saveDraft(next)})";
 const newClick="document.querySelectorAll('[data-slot]').forEach(el=>el.onclick=()=>{const s=current();if(!s)return;if(s.status==='confirmed'){toast('本週已確認，不能直接改動');return}if(el.dataset.blocked==='true'){toast('這個時段已被其他學員佔用');return}if(s.mode==='free'){toast('自由選空檔由學生從剩餘時段選擇');return}const x=el.dataset.slot,max=s.mode==='choices'?3:s.sessions;let next=[...selected];if(next.includes(x))next=next.filter(v=>v!==x);else{if(next.length>=max)next=next.slice(1);next.push(x)}applyLocalDraft(s,next)})";
@@ -50,7 +65,7 @@ const newRefresh="async function refresh(force=false){if(!force&&(dirty.size||dr
 rep(oldRefresh,newRefresh,'safe refresh');
 
 const oldSave="async function saveDraft(next){if(!(await ensurePin()))return;const s=current();if(!s)return;draftBusy=true;try{const r=await fetch('/api/student-draft',{method:'POST',headers:{'content-type':'application/json','x-eddie-coach-pin':pin},body:JSON.stringify({studentId:s.id,slots:next})}),o=await r.json();if(!r.ok){if(r.status===401){pin='';localStorage.removeItem('eddie-coach-pin')}toast(o.error||'時段儲存失敗');await refresh();return}selected=[...(o.student.draftSlots||[])];await refresh()}catch{toast('網路錯誤')}finally{draftBusy=false}}";
-const newSave="function applyLocalDraft(s,next){selected=[...next];s.draftSlots=[...next];s.status=next.length?'draft':'none';state.week=state.week||{confirmed:{},holds:{}};state.week.holds=state.week.holds||{};for(const [slot,h] of Object.entries(state.week.holds))if(h.studentId===s.id)delete state.week.holds[slot];for(const slot of next)state.week.holds[slot]={studentId:s.id,name:s.name,type:'draft'};dirty.add(s.id);lastEditAt=Date.now();renderAll();schedulePersist()}function schedulePersist(){clearTimeout(draftTimer);draftTimer=setTimeout(()=>{draftTimer=null;void flushDrafts()},650)}function flushDrafts(){clearTimeout(draftTimer);draftTimer=null;const jobs=[...dirty].map(id=>{const s=students.find(x=>x.id===id);return s?{studentId:id,slots:[...(s.draftSlots||[])]}:null}).filter(Boolean);jobs.forEach(j=>dirty.delete(j.studentId));if(!jobs.length)return persistChain;persistChain=persistChain.then(async()=>{for(const job of jobs){const r=await fetch('/api/student-draft',{method:'POST',headers:{'content-type':'application/json','x-eddie-coach-pin':pin},body:JSON.stringify(job)}),o=await r.json();if(!r.ok){toast(o.error||'時段儲存失敗');await refresh(true);return}}}).catch(()=>{toast('同步失敗，請再試一次')});return persistChain}async function saveDraft(next){const s=current();if(!s||!(await ensurePin()))return;applyLocalDraft(s,next);await flushDrafts()}";
+const newSave="function applyLocalDraft(s,next){selected=[...next];s.draftSlots=[...next];s.status=next.length?'draft':'none';state.week=state.week||{confirmed:{},holds:{}};state.week.holds=state.week.holds||{};for(const [slot,h] of Object.entries(state.week.holds))if(h.studentId===s.id)delete state.week.holds[slot];for(const slot of next)state.week.holds[slot]={studentId:s.id,name:s.name,type:slot.includes(' 18:00–19:00')?'coach-option':'draft'};dirty.add(s.id);lastEditAt=Date.now();renderAll();schedulePersist()}function schedulePersist(){clearTimeout(draftTimer);draftTimer=setTimeout(()=>{draftTimer=null;void flushDrafts()},650)}function flushDrafts(){clearTimeout(draftTimer);draftTimer=null;const jobs=[...dirty].map(id=>{const s=students.find(x=>x.id===id);return s?{studentId:id,slots:[...(s.draftSlots||[])]}:null}).filter(Boolean);jobs.forEach(j=>dirty.delete(j.studentId));if(!jobs.length)return persistChain;persistChain=persistChain.then(async()=>{for(const job of jobs){const r=await fetch('/api/student-draft',{method:'POST',headers:{'content-type':'application/json','x-eddie-coach-pin':pin},body:JSON.stringify(job)}),o=await r.json();if(!r.ok){toast(o.error||'時段儲存失敗');await refresh(true);return}}}).catch(()=>{toast('同步失敗，請再試一次')});return persistChain}async function saveDraft(next){const s=current();if(!s||!(await ensurePin()))return;applyLocalDraft(s,next);await flushDrafts()}";
 rep(oldSave,newSave,'optimistic draft save');
 
 rep(
