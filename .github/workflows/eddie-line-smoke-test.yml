@@ -78,7 +78,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="eddie-line-sandbox") | .id' | head -1)
-          latest=$(npx wrangler kv key get --namespace-id "$namespace_id" 'line:latest-user' --text --remote 2>/dev/null || true)
+          latest=$(curl -fsS \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$namespace_id/values/line%3Alatest-user" || true)
           if [ -z "$latest" ]; then
             echo "NO_LATEST_LINE_USER"
           else
