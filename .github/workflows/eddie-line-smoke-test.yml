@@ -1,4 +1,4 @@
-name: Eddie LINE sandbox end-to-end test
+name: Eddie LINE sandbox deploy
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  deploy-and-send:
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -20,78 +20,54 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify sandbox secrets
+      - name: Verify Cloudflare secrets
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          LINE_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          LINE_DESTINATION: ${{ secrets.LINE_DESTINATION_ID || secrets.LINE_USER_ID }}
         run: |
           test -n "$CF_TOKEN"
           test -n "$CF_ACCOUNT"
-          test -n "$LINE_TOKEN"
-          test -n "$LINE_DESTINATION"
 
-      - name: Deploy isolated Eddie sandbox Worker
+      - name: Deploy isolated Eddie Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npm install --no-save wrangler@4
-          namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="taiwan-mlb-observation-list") | .id' | head -1)
+          namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="eddie-line-sandbox") | .id' | head -1)
+          if [ -z "$namespace_id" ] || [ "$namespace_id" = "null" ]; then
+            npx wrangler kv namespace create eddie-line-sandbox
+            namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="eddie-line-sandbox") | .id' | head -1)
+          fi
           test -n "$namespace_id" && test "$namespace_id" != "null"
-          TEST_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          TEST_TOKEN="eddie-${TEST_ID}"
+
           cat > wrangler.eddie.toml <<EOF
           name = "eddie-line-sandbox"
           main = "cloudflare/eddie-sandbox-worker.js"
           compatibility_date = "2026-08-16"
           account_id = "$CLOUDFLARE_ACCOUNT_ID"
           workers_dev = true
+          keep_vars = true
 
           [vars]
-          EDDIE_TEST_ID = "$TEST_ID"
+          EDDIE_TEST_ID = "live-test"
 
           [[kv_namespaces]]
-          binding = "OBSERVATION_LIST"
+          binding = "EDDIE_KV"
           id = "$namespace_id"
           EOF
-          npx wrangler deploy --config wrangler.eddie.toml
-          printf '%s' "$TEST_TOKEN" | npx wrangler secret put EDDIE_TEST_TOKEN --config wrangler.eddie.toml
-          echo "EDDIE_TEST_ID=$TEST_ID" >> "$GITHUB_ENV"
-          echo "EDDIE_TEST_TOKEN=$TEST_TOKEN" >> "$GITHUB_ENV"
-          echo "EDDIE_URL=https://eddie-line-sandbox.jonwang329.workers.dev" >> "$GITHUB_ENV"
 
-      - name: Verify Eddie portal
+          npx wrangler deploy --config wrangler.eddie.toml
+
+      - name: Verify Eddie Worker health
         run: |
+          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           for attempt in $(seq 1 10); do
-            health=$(curl -sS "$EDDIE_URL/health" || true)
-            state=$(curl -sS "$EDDIE_URL/?token=$EDDIE_TEST_TOKEN&format=json" || true)
-            echo "attempt $attempt health=$health state=$state"
-            if echo "$health" | jq -e '.ok == true' >/dev/null 2>&1 && echo "$state" | jq -e '.name == "Jon" and (.offers|length) == 2 and .confirmed == null' >/dev/null 2>&1; then
+            health=$(curl -sS "$URL/health" || true)
+            echo "attempt $attempt health=$health"
+            if echo "$health" | jq -e '.ok == true' >/dev/null 2>&1; then
               exit 0
             fi
             sleep 2
           done
           exit 1
-
-      - name: Send Eddie Student Portal link through MLB LINE sandbox
-        env:
-          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
-          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: |
-          export DEST="${LINE_DESTINATION_ID:-$LINE_USER_ID}"
-          export STUDENT_URL="$EDDIE_URL/?token=$EDDIE_TEST_TOKEN"
-          BODY=$(python3 - <<'PY'
-          import json, os
-          text = "[EDDIE TEST] Hi Jon 👋\nCoach 提供兩個時段給你。請點下面連結，選一個時間後按 Confirm：\n" + os.environ['STUDENT_URL'] + "\n\n這是測試訊息；不會改動 MLB 球員資料或排程。"
-          print(json.dumps({"to": os.environ['DEST'], "messages": [{"type":"text","text":text}]}))
-          PY
-          )
-          HTTP=$(curl -sS -o /tmp/line-response.txt -w '%{http_code}' -X POST 'https://api.line.me/v2/bot/message/push' -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" -H 'Content-Type: application/json' --data "$BODY")
-          cat /tmp/line-response.txt
-          echo "HTTP $HTTP"
-          test "$HTTP" = "200"
-          echo "Student URL: $STUDENT_URL"
-          echo "Coach check: $EDDIE_URL/?token=$EDDIE_TEST_TOKEN&format=json"
