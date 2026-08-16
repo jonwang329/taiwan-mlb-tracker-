@@ -1,0 +1,40 @@
+name: LINE one-shot live test
+
+on:
+  push:
+    branches:
+      - test/line-live-message-20260816
+    paths:
+      - .github/workflows/line-live-test-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load observation API URL
+        run: |
+          api_url=$(sed -n "s/.*OBSERVATION_API_URL = '\(.*\)';.*/\1/p" observation-config.js | head -1)
+          if [ -n "$api_url" ]; then
+            echo "OBSERVATION_API_URL=$api_url" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify LINE configuration
+        env:
+          HAS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN != '' }}
+          HAS_DESTINATION: ${{ secrets.LINE_DESTINATION_ID != '' || secrets.LINE_USER_ID != '' }}
+        run: |
+          [[ "$HAS_TOKEN" == "true" ]] || { echo "::error::LINE_CHANNEL_ACCESS_TOKEN missing"; exit 1; }
+          [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE destination missing"; exit 1; }
+
+      - name: Send current official-data TEST summary
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: node scripts/send-line-update.mjs --mode=final --test
