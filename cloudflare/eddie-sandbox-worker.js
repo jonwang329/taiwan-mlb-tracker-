@@ -2,6 +2,7 @@ const latestLineUserKey = 'line:latest-user';
 const latestWebhookAttemptKey = 'line:webhook:last-attempt';
 const coachLineUserKey = 'line:coach-user';
 const coachStateKey = 'coach:student:jon';
+const confirmAttemptKey = 'confirm:last-attempt';
 
 const json = (x, status = 200) => new Response(JSON.stringify(x), {
   status,
@@ -20,6 +21,15 @@ function randomToken() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 async function verifyLineSignature(rawBody, signature, channelSecret) {
@@ -157,11 +167,19 @@ async function publicLineWebhookConfig(request, env) {
 
 function studentPage(state, token) {
   const confirmed = state.status === 'confirmed';
+  const safeName = escapeHtml(state.name || 'Jon');
   const body = confirmed
-    ? `<div class="confirmed">✓ 已確認<br><strong>${state.confirmed}</strong></div><p class="muted">另一個候選時段已自動釋放，系統也已自動通知教練。</p>`
-    : `${state.offers.map(x => `<button class="slot" data-x="${x}">${x}</button>`).join('')}<button class="confirm" id="confirm" disabled>Confirm</button>`;
+    ? `<div class="confirmed">✓ 已確認<br><strong>${escapeHtml(state.confirmed)}</strong></div><p class="muted">另一個候選時段已自動釋放，系統也已自動通知教練。</p>`
+    : `<form method="post" action="/student/${token}/confirm-form">${state.offers.map((x, i) => `<label class="slot"><input type="radio" name="slot" value="${escapeHtml(x)}" ${i === 0 ? 'required' : ''}><span>${escapeHtml(x)}</span></label>`).join('')}<button class="confirm" type="submit">Confirm</button><p class="hint">按 Confirm 後會立即顯示確認結果。</p></form>`;
 
-  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eddie Training</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f5f7fa;margin:0;color:#172033}.wrap{max-width:560px;margin:auto;padding:18px}.card{background:#fff;border-radius:18px;padding:20px;box-shadow:0 8px 28px #0001}.tag{font-size:12px;font-weight:800;color:#8b3d59;letter-spacing:.04em}.slot{display:block;width:100%;text-align:left;padding:15px;margin:10px 0;border:1px solid #e2a9bb;background:#fff1f5;border-radius:12px;font-size:16px}.slot.on{outline:3px solid #173b66}.confirm{width:100%;padding:14px;border:0;border-radius:12px;background:#173b66;color:#fff;font-weight:800;font-size:16px;margin-top:12px}.confirm:disabled{opacity:.4}.confirmed{padding:16px;background:#edf7ee;border-radius:12px;color:#356443;font-weight:700}.muted{color:#6b7788;font-size:13px;line-height:1.6}</style></head><body><div class="wrap"><div class="card"><div class="tag">EDDIE TRAINING · 排課測試</div><h2>Hi ${state.name || 'Jon'} 👋</h2><p class="muted">請選一個 Eddie 教練提供的時段。只有按 Confirm 才會正式確認。</p><div id="app">${body}</div></div></div>${confirmed ? '' : `<script>let chosen='';document.querySelectorAll('.slot').forEach(b=>b.onclick=()=>{chosen=b.dataset.x;document.querySelectorAll('.slot').forEach(x=>x.classList.toggle('on',x===b));document.getElementById('confirm').disabled=false});document.getElementById('confirm').onclick=async()=>{const btn=document.getElementById('confirm');btn.disabled=true;btn.textContent='Confirming…';const r=await fetch('/student/${token}/confirm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({slot:chosen})});if(!r.ok){btn.disabled=false;btn.textContent='Confirm';alert('確認失敗，請再試一次');return}location.reload()};</script>`}</body></html>`;
+  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eddie Training</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f5f7fa;margin:0;color:#172033}.wrap{max-width:560px;margin:auto;padding:18px}.card{background:#fff;border-radius:18px;padding:20px;box-shadow:0 8px 28px #0001}.tag{font-size:12px;font-weight:800;color:#8b3d59;letter-spacing:.04em}.slot{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;padding:15px;margin:10px 0;border:1px solid #e2a9bb;background:#fff1f5;border-radius:12px;font-size:16px;cursor:pointer}.slot input{width:20px;height:20px;flex:0 0 auto}.slot:has(input:checked){outline:3px solid #173b66;background:#f9e6ed}.confirm{width:100%;padding:14px;border:0;border-radius:12px;background:#173b66;color:#fff;font-weight:800;font-size:16px;margin-top:12px}.confirmed{padding:16px;background:#edf7ee;border-radius:12px;color:#356443;font-weight:700}.muted,.hint{color:#6b7788;font-size:13px;line-height:1.6}.hint{text-align:center;margin-bottom:0}</style></head><body><div class="wrap"><div class="card"><div class="tag">EDDIE TRAINING · 排課測試</div><h2>Hi ${safeName} 👋</h2><p class="muted">請選一個 Eddie 教練提供的時段。只有按 Confirm 才會正式確認。</p>${body}</div></div></body></html>`;
+}
+
+function errorPage(message, status = 400) {
+  return new Response(`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;padding:24px"><h2>無法確認</h2><p>${escapeHtml(message)}</p><p>請回到 LINE 重新開啟最新的排課連結。</p></body></html>`, {
+    status,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }
+  });
 }
 
 async function requireNonce(request, env) {
@@ -226,27 +244,7 @@ async function handleDemoSend(request, env) {
   return json({ ok: true, recipient: state.name, offerCount: state.offers.length, lineStatus: line.status });
 }
 
-async function confirmStudent(request, env, token) {
-  const key = `portal:${token}`;
-  const state = await env.EDDIE_KV.get(key, 'json');
-  if (!state) return json({ error: 'link expired or invalid' }, 404);
-  if (state.status === 'confirmed') return json({ ok: true, state: { status: state.status, confirmed: state.confirmed } });
-
-  const body = await request.json().catch(() => ({}));
-  if (!state.offers.includes(body.slot)) return json({ error: 'invalid slot' }, 400);
-
-  const originalOffers = [...state.offers];
-  state.confirmed = body.slot;
-  state.released = originalOffers.filter(x => x !== body.slot);
-  state.offers = [body.slot];
-  state.status = 'confirmed';
-  state.updatedAt = new Date().toISOString();
-
-  await Promise.all([
-    env.EDDIE_KV.put(key, JSON.stringify(state), { expirationTtl: 60 * 60 * 24 * 7 }),
-    env.EDDIE_KV.put(coachStateKey, JSON.stringify({ ...state, lineUserId: undefined, portalToken: token }))
-  ]);
-
+async function notifyConfirmation(env, token, state) {
   const studentNotice = state.lineUserId
     ? await pushLineText(env, state.lineUserId, `✅ Eddie Training｜學員確認\n${state.confirmed}\n\n其他候選時段已自動釋放。`)
     : { ok: false, status: 0, reason: 'student-not-paired' };
@@ -262,28 +260,76 @@ async function confirmStudent(request, env, token) {
   state.updatedAt = new Date().toISOString();
 
   await Promise.all([
+    env.EDDIE_KV.put(`portal:${token}`, JSON.stringify(state), { expirationTtl: 60 * 60 * 24 * 7 }),
+    env.EDDIE_KV.put(coachStateKey, JSON.stringify({ ...state, lineUserId: undefined, portalToken: token }))
+  ]);
+}
+
+async function applyConfirmation(env, token, slot, mode, ctx) {
+  const key = `portal:${token}`;
+  const state = await env.EDDIE_KV.get(key, 'json');
+
+  await env.EDDIE_KV.put(confirmAttemptKey, JSON.stringify({
+    receivedAt: new Date().toISOString(),
+    mode,
+    linkFound: Boolean(state),
+    slotPresent: Boolean(slot)
+  }));
+
+  if (!state) return { ok: false, status: 404, error: '排課連結已失效或不存在。' };
+  if (state.status === 'confirmed') return { ok: true, alreadyConfirmed: true, state };
+  if (!slot || !state.offers.includes(slot)) return { ok: false, status: 400, error: '請先選擇一個有效時段。' };
+
+  const originalOffers = [...state.offers];
+  state.confirmed = slot;
+  state.released = originalOffers.filter(x => x !== slot);
+  state.offers = [slot];
+  state.status = 'confirmed';
+  state.studentNotification = 'pending';
+  state.coachNotification = 'pending';
+  state.updatedAt = new Date().toISOString();
+
+  await Promise.all([
     env.EDDIE_KV.put(key, JSON.stringify(state), { expirationTtl: 60 * 60 * 24 * 7 }),
     env.EDDIE_KV.put(coachStateKey, JSON.stringify({ ...state, lineUserId: undefined, portalToken: token }))
   ]);
 
+  const notify = notifyConfirmation(env, token, state);
+  if (ctx?.waitUntil) ctx.waitUntil(notify);
+  else await notify;
+
+  return { ok: true, state };
+}
+
+async function confirmJson(request, env, token, ctx) {
+  const body = await request.json().catch(() => ({}));
+  const result = await applyConfirmation(env, token, body.slot, 'json', ctx);
+  if (!result.ok) return json({ error: result.error }, result.status);
   return json({
     ok: true,
     state: {
-      status: state.status,
-      confirmed: state.confirmed,
-      released: state.released,
-      studentNotification: state.studentNotification,
-      coachNotification: state.coachNotification
+      status: result.state.status,
+      confirmed: result.state.confirmed,
+      released: result.state.released
     }
   });
 }
 
+async function confirmForm(request, env, token, ctx) {
+  const form = await request.formData().catch(() => null);
+  const slot = form ? String(form.get('slot') || '') : '';
+  const result = await applyConfirmation(env, token, slot, 'form', ctx);
+  if (!result.ok) return errorPage(result.error, result.status);
+  return Response.redirect(`${new URL(request.url).origin}/student/${token}`, 303);
+}
+
 async function coachStatus(env) {
-  const [s, coach] = await Promise.all([
+  const [s, coach, confirmAttempt] = await Promise.all([
     env.EDDIE_KV.get(coachStateKey, 'json'),
-    env.EDDIE_KV.get(coachLineUserKey, 'json')
+    env.EDDIE_KV.get(coachLineUserKey, 'json'),
+    env.EDDIE_KV.get(confirmAttemptKey, 'json')
   ]);
-  if (!s) return json({ status: 'none', coachPaired: Boolean(coach?.userId) });
+  if (!s) return json({ status: 'none', coachPaired: Boolean(coach?.userId), confirmAttempt: confirmAttempt || null });
   return json({
     studentId: s.studentId,
     name: s.name,
@@ -295,6 +341,7 @@ async function coachStatus(env) {
     coachNotification: s.coachNotification || null,
     coachNotifiedAt: s.coachNotifiedAt || null,
     coachPaired: Boolean(coach?.userId),
+    confirmAttempt: confirmAttempt || null,
     updatedAt: s.updatedAt
   });
 }
@@ -309,6 +356,7 @@ export default {
       channelSecretConfigured: Boolean(env.LINE_CHANNEL_SECRET),
       lineTokenConfigured: Boolean(env.LINE_CHANNEL_ACCESS_TOKEN),
       deployNonceConfigured: Boolean(env.EDDIE_DEPLOY_NONCE),
+      confirmMode: 'native-form',
       storage: 'eddie-kv'
     });
 
@@ -323,10 +371,17 @@ export default {
       const parts = url.pathname.split('/').filter(Boolean);
       const token = parts[1] || '';
       if (!/^[a-f0-9]{48}$/.test(token)) return json({ error: 'invalid link' }, 404);
+
       if (parts[2] === 'confirm') {
         if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
-        return confirmStudent(request, env, token);
+        return confirmJson(request, env, token, ctx);
       }
+
+      if (parts[2] === 'confirm-form') {
+        if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+        return confirmForm(request, env, token, ctx);
+      }
+
       if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
       const state = await env.EDDIE_KV.get(`portal:${token}`, 'json');
       if (!state) return new Response('This scheduling link has expired.', { status: 404 });
