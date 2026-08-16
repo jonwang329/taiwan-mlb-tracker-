@@ -84,18 +84,30 @@ jobs:
           echo "$config" | jq .
           echo "$config" | jq -e '.active == true and .endpointMatchesExpected == true' >/dev/null
 
-      - name: Pair captured Jon as sandbox coach
-        if: github.event.head_commit.message == 'Send native-form Eddie test'
+      - name: Verify second LINE user is separate from coach
+        if: github.event.head_commit.message == 'Test Kevin scheduling separation'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
-          result=$(curl -fsS -X POST \
-            -H "x-eddie-deploy-nonce: $EDDIE_DEPLOY_NONCE" \
-            "$URL/internal/pair-latest-as-coach")
-          echo "$result" | jq '{ok,coach,userIdStored}'
-          echo "$result" | jq -e '.ok == true and .userIdStored == true' >/dev/null
+          namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="eddie-line-sandbox") | .id' | head -1)
+          latest=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$namespace_id/values/line%3Alatest-user")
+          coach=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$namespace_id/values/line%3Acoach-user")
+          echo "$latest" | jq '{latestDisplayName:.displayName,status:.status,userIdPresent:(.userId|length>0)}'
+          echo "$coach" | jq '{coachDisplayName:.displayName,userIdPresent:(.userId|length>0)}'
+          latest_id=$(echo "$latest" | jq -r '.userId')
+          coach_id=$(echo "$coach" | jq -r '.userId')
+          test -n "$latest_id" && test -n "$coach_id"
+          if [ "$latest_id" = "$coach_id" ]; then
+            echo "LATEST_USER_IS_STILL_COACH"
+            exit 1
+          fi
+          echo "SECOND_USER_SEPARATED_FROM_COACH=true"
 
-      - name: Send fresh scheduling test
-        if: github.event.head_commit.message == 'Send native-form Eddie test'
+      - name: Send scheduling test only to second user
+        if: github.event.head_commit.message == 'Test Kevin scheduling separation'
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           result=$(curl -fsS -X POST \
@@ -104,8 +116,8 @@ jobs:
           echo "$result" | jq '{ok,recipient,offerCount,lineStatus}'
           echo "$result" | jq -e '.ok == true and .offerCount == 2 and .lineStatus >= 200 and .lineStatus < 300' >/dev/null
 
-      - name: Verify coach is paired and state is Offered
-        if: github.event.head_commit.message == 'Send native-form Eddie test'
+      - name: Verify coach remains paired and second user is Offered
+        if: github.event.head_commit.message == 'Test Kevin scheduling separation'
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           state=$(curl -fsS "$URL/coach-status")
