@@ -55,13 +55,13 @@ jobs:
           EOF
           npx wrangler deploy --config wrangler.eddie.toml
 
-      - name: Verify Eddie Worker health
+      - name: Verify Eddie Worker is offer-only
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
           for attempt in $(seq 1 10); do
             health=$(curl -sS "$URL/health" || true)
             echo "attempt $attempt health=$health"
-            if echo "$health" | jq -e '.ok == true and .confirmMode == "native-form"' >/dev/null 2>&1; then exit 0; fi
+            if echo "$health" | jq -e '.ok == true and .confirmMode == "native-form" and .linePushPolicy == "offer-only"' >/dev/null 2>&1; then exit 0; fi
             sleep 2
           done
           exit 1
@@ -73,8 +73,8 @@ jobs:
           echo "$config" | jq .
           echo "$config" | jq -e '.active == true and .endpointMatchesExpected == true' >/dev/null
 
-      - name: Check latest LINE user only
-        if: github.event.head_commit.message == 'Check Kevin webhook only'
+      - name: Verify latest LINE user is Kevin
+        if: github.event.head_commit.message == 'Send Kevin offer-only test'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -82,10 +82,23 @@ jobs:
           namespace_id=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="eddie-line-sandbox") | .id' | head -1)
           latest=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$namespace_id/values/line%3Alatest-user")
-          coach=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$namespace_id/values/line%3Acoach-user")
-          echo "$latest" | jq '{latestDisplayName:.displayName,status:.status,lastEventType:.lastEventType,lastSeenAt:.lastSeenAt,userIdPresent:(.userId|length>0)}'
-          echo "$coach" | jq '{coachDisplayName:.displayName,userIdPresent:(.userId|length>0)}'
-          latest_id=$(echo "$latest" | jq -r '.userId')
-          coach_id=$(echo "$coach" | jq -r '.userId')
-          if [ "$latest_id" = "$coach_id" ]; then echo "LATEST_EQUALS_COACH=true"; else echo "LATEST_EQUALS_COACH=false"; fi
+          echo "$latest" | jq '{displayName,status,lastEventType,lastSeenAt,userIdPresent:(.userId|length>0)}'
+          echo "$latest" | jq -e '.displayName == "Kevin" and .status == "active" and (.userId|length>0)' >/dev/null
+
+      - name: Send one scheduling invitation to Kevin
+        if: github.event.head_commit.message == 'Send Kevin offer-only test'
+        run: |
+          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
+          result=$(curl -fsS -X POST \
+            -H "x-eddie-deploy-nonce: $EDDIE_DEPLOY_NONCE" \
+            "$URL/internal/send-demo")
+          echo "$result" | jq '{ok,recipient,offerCount,lineStatus,linePushPolicy}'
+          echo "$result" | jq -e '.ok == true and .recipient == "Kevin" and .offerCount == 2 and .lineStatus >= 200 and .lineStatus < 300 and .linePushPolicy == "offer-only"' >/dev/null
+
+      - name: Verify Dashboard state is Offered
+        if: github.event.head_commit.message == 'Send Kevin offer-only test'
+        run: |
+          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
+          state=$(curl -fsS "$URL/coach-status")
+          echo "$state" | jq .
+          echo "$state" | jq -e '.name == "Kevin" and .status == "offered" and (.offers|length) == 2 and .linePushPolicy == "offer-only"' >/dev/null
