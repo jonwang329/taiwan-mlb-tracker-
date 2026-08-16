@@ -22,6 +22,14 @@ rep(
 'student wording');
 
 rep(
+".student,.addStudent{position:relative;border:1px solid var(--line);",
+".student,.addStudent{touch-action:manipulation;cursor:pointer;position:relative;border:1px solid var(--line);",
+'student touch');
+rep(
+".mode,.count{border:1px solid var(--line);",
+".mode,.count{touch-action:manipulation;cursor:pointer;border:1px solid var(--line);",
+'control touch');
+rep(
 ".cell.selected,.cell.heldMine{background:var(--pink);border:1px solid var(--pinkBorder);color:var(--pinkInk)}",
 ".cell.selected,.cell.heldMine{background:var(--pink);border:1px solid var(--pinkBorder);color:var(--pinkInk)}.cell.override{background:linear-gradient(135deg,var(--pink) 0 72%,var(--blueSoft) 72% 100%);border:2px solid var(--pinkBorder);color:var(--pinkInk)}",
 'coach option style');
@@ -52,7 +60,7 @@ rep(
 'coach option subtitle');
 
 const oldClick="document.querySelectorAll('[data-slot]').forEach(el=>el.onclick=async()=>{const s=current();if(!s||draftBusy)return;if(s.status==='confirmed'){toast('本週已確認，不能直接改動');return}if(el.dataset.blocked==='true'){toast('這個時段已被其他學員佔用');return}if(s.mode==='free'){toast('自由選空檔由學生從剩餘時段選擇');return}const x=el.dataset.slot;let next=[...selected];if(next.includes(x))next=next.filter(v=>v!==x);else{if(next.length>=s.sessions)next=next.slice(1);next.push(x)}await saveDraft(next)})";
-const newClick="document.querySelectorAll('[data-slot]').forEach(el=>el.onclick=()=>{const s=current();if(!s)return;if(s.status==='confirmed'){toast('本週已確認，不能直接改動');return}if(el.dataset.blocked==='true'){toast('這個時段已被其他學員佔用');return}if(s.mode==='free'){toast('自由選空檔由學生從剩餘時段選擇');return}const x=el.dataset.slot,max=s.mode==='choices'?3:s.sessions;let next=[...selected];if(next.includes(x))next=next.filter(v=>v!==x);else{if(next.length>=max)next=next.slice(1);next.push(x)}applyLocalDraft(s,next)})";
+const newClick="document.querySelectorAll('[data-slot]').forEach(el=>el.onclick=()=>{const s=current();if(!s)return;if(s.status==='confirmed'){toast('本週已確認；如要改時間請使用變更流程');return}if(el.dataset.blocked==='true'){toast('這個時段已被其他學員佔用');return}if(s.mode==='free'){toast('自由選空檔由學生從剩餘時段選擇');return}const x=el.dataset.slot,max=s.mode==='choices'?3:s.sessions;let next=[...selected];if(next.includes(x))next=next.filter(v=>v!==x);else{if(next.length>=max)next=next.slice(1);next.push(x)}applyLocalDraft(s,next)})";
 rep(oldClick,newClick,'instant calendar click');
 
 rep(
@@ -68,10 +76,9 @@ const oldSave="async function saveDraft(next){if(!(await ensurePin()))return;con
 const newSave="function applyLocalDraft(s,next){selected=[...next];s.draftSlots=[...next];s.status=next.length?'draft':'none';state.week=state.week||{confirmed:{},holds:{}};state.week.holds=state.week.holds||{};for(const [slot,h] of Object.entries(state.week.holds))if(h.studentId===s.id)delete state.week.holds[slot];for(const slot of next)state.week.holds[slot]={studentId:s.id,name:s.name,type:slot.includes(' 18:00–19:00')?'coach-option':'draft'};dirty.add(s.id);lastEditAt=Date.now();renderAll();schedulePersist()}function schedulePersist(){clearTimeout(draftTimer);draftTimer=setTimeout(()=>{draftTimer=null;void flushDrafts()},650)}function flushDrafts(){clearTimeout(draftTimer);draftTimer=null;const jobs=[...dirty].map(id=>{const s=students.find(x=>x.id===id);return s?{studentId:id,slots:[...(s.draftSlots||[])]}:null}).filter(Boolean);jobs.forEach(j=>dirty.delete(j.studentId));if(!jobs.length)return persistChain;persistChain=persistChain.then(async()=>{for(const job of jobs){const r=await fetch('/api/student-draft',{method:'POST',headers:{'content-type':'application/json','x-eddie-coach-pin':pin},body:JSON.stringify(job)}),o=await r.json();if(!r.ok){toast(o.error||'時段儲存失敗');await refresh(true);return}}}).catch(()=>{toast('同步失敗，請再試一次')});return persistChain}async function saveDraft(next){const s=current();if(!s||!(await ensurePin()))return;applyLocalDraft(s,next);await flushDrafts()}";
 rep(oldSave,newSave,'optimistic draft save');
 
-rep(
-"const draft=mode==='free'?[]:selected.slice(-sessions);",
-"await flushDrafts();const draft=mode==='free'?[]:selected.slice(-(mode==='choices'?3:sessions));",
-'settings draft preservation');
+const oldSettings=`async function saveSettings(mode,sessions){if(!(await ensurePin()))return;const s=current();if(!s)return;const draft=mode==='free'?[]:selected.slice(-sessions);const r=await fetch('/api/student-settings',{method:'POST',headers:{'content-type':'application/json','x-eddie-coach-pin':pin},body:JSON.stringify({studentId:s.id,mode,sessions,draftSlots:draft})}),o=await r.json();if(!r.ok){toast(o.error||'設定儲存失敗');await refresh();return}await refresh()}document.querySelectorAll('.mode').forEach(b=>b.onclick=async()=>{const s=current();if(!s||s.status==='confirmed')return;await saveSettings(b.dataset.mode,s.sessions)});document.querySelectorAll('.count').forEach(b=>b.onclick=async()=>{const s=current();if(!s||s.status==='confirmed')return;await saveSettings(s.mode,+b.dataset.count)});`;
+const newSettings=`async function saveSettings(mode,sessions){const s=current();if(!s)return;if(s.status==='confirmed'){toast('這位學員本週已確認；要改設定請先進入變更流程');return}if(!(await ensurePin()))return;const id=s.id,max=mode==='free'?0:(mode==='choices'?3:sessions),next=mode==='free'?[]:[...selected].slice(-max);s.mode=mode;s.sessions=sessions;s.draftSlots=[...next];selected=[...next];state.week=state.week||{confirmed:{},holds:{}};state.week.holds=state.week.holds||{};for(const [slot,h] of Object.entries(state.week.holds))if(h.studentId===id)delete state.week.holds[slot];for(const slot of next)state.week.holds[slot]={studentId:id,name:s.name,type:slot.includes(' 18:00–19:00')?'coach-option':'draft'};lastEditAt=Date.now();renderAll();await flushDrafts();try{const r=await fetch('/api/student-settings',{method:'POST',headers:{'content-type':'application/json','x-eddie-coach-pin':pin},body:JSON.stringify({studentId:id,mode,sessions,draftSlots:next})}),o=await r.json();if(!r.ok){toast(o.error||'設定儲存失敗');await refresh(true);return}const local=students.find(x=>x.id===id);if(local&&o.student){local.mode=o.student.mode;local.sessions=o.student.sessions;local.status=o.student.status;local.draftSlots=[...(o.student.draftSlots||[])]}if(o.week)state.week=o.week;if(current()?.id===id)selected=[...(local?.draftSlots||[])];renderAll()}catch{toast('設定同步失敗');await refresh(true)}}document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>{const s=current();if(!s)return;void saveSettings(b.dataset.mode,s.sessions)});document.querySelectorAll('.count').forEach(b=>b.onclick=()=>{const s=current();if(!s)return;void saveSettings(s.mode,+b.dataset.count)});`;
+rep(oldSettings,newSettings,'instant mode/session controls');
 
 rep("$('clear').onclick=()=>saveDraft([]);","$('clear').onclick=async()=>{if(!(await ensurePin()))return;const s=current();if(s)applyLocalDraft(s,[])};",'clear local');
 
@@ -84,6 +91,16 @@ rep(
 "refresh();setInterval(refresh,4000);",
 "refresh(true);setInterval(()=>{if(Date.now()-lastEditAt>10000&&!dirty.size&&!draftTimer)refresh()},15000);",
 'polling interval');
+
+for(const [needle,label] of [
+  ["void saveSettings(b.dataset.mode,s.sessions)",'mode immediate handler'],
+  ["void saveSettings(s.mode,+b.dataset.count)",'session immediate handler'],
+  ["s.mode=mode;s.sessions=sessions",'optimistic settings state'],
+  ["s.mode==='choices'?3:s.sessions",'three coach choices'],
+  ["★ 教練特別選項",'coach dinner option'],
+  ["setInterval(()=>{if(Date.now()-lastEditAt>10000",'non-disruptive polling']
+]) if(!s.includes(needle)) throw new Error('UI regression gate missing: '+label);
+if(s.includes('setInterval(refresh,4000)')) throw new Error('UI regression: disruptive 4s refresh returned');
 
 fs.writeFileSync(path,s);
 console.log('EDDIE_UI_HOTFIX_OK');
