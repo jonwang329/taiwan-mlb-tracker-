@@ -1,5 +1,6 @@
 const stateKey = env => `student:${env.EDDIE_TEST_ID || 'live-test'}:jon`;
 const latestLineUserKey = 'line:latest-user';
+const latestWebhookAttemptKey = 'line:webhook:last-attempt';
 const defaultState = () => ({ studentId:'jon', name:'Jon', offers:['Tue 17:00–18:00','Wed 17:00–18:00'], confirmed:null, updatedAt:new Date().toISOString() });
 
 async function readState(env){ return await env.EDDIE_KV.get(stateKey(env),'json') || defaultState(); }
@@ -63,6 +64,17 @@ async function handleWebhook(request,env,ctx){
   const rawBody=await request.text();
   const signature=request.headers.get('x-line-signature') || '';
   const valid=await verifyLineSignature(rawBody,signature,env.LINE_CHANNEL_SECRET);
+
+  // Diagnostic only: never store message text/body. This tells us whether LINE reached the Worker
+  // and whether the configured Channel Secret matches the signature.
+  await env.EDDIE_KV.put(latestWebhookAttemptKey,JSON.stringify({
+    receivedAt:new Date().toISOString(),
+    signaturePresent:Boolean(signature),
+    signatureValid:Boolean(valid),
+    channelSecretConfigured:Boolean(env.LINE_CHANNEL_SECRET),
+    contentType:request.headers.get('content-type') || ''
+  }));
+
   if(!valid) return json({error:'invalid signature'},401);
 
   let payload;
@@ -103,6 +115,10 @@ export default { async fetch(request,env,ctx){
 
   if(url.pathname==='/api/latest-line-user'){
     return json(await env.EDDIE_KV.get(latestLineUserKey,'json') || {userId:null});
+  }
+
+  if(url.pathname==='/api/webhook-debug'){
+    return json(await env.EDDIE_KV.get(latestWebhookAttemptKey,'json') || {receivedAt:null});
   }
 
   if(request.method==='POST' && url.searchParams.get('action')==='confirm'){
