@@ -73,6 +73,12 @@ jobs:
           done
           exit 1
 
+      - name: Read LINE webhook configuration
+        run: |
+          URL="https://eddie-line-sandbox.jonwang329.workers.dev"
+          config=$(curl -fsS "$URL/line-webhook-config")
+          echo "$config" | jq .
+
       - name: Read safe webhook diagnostics
         run: |
           URL="https://eddie-line-sandbox.jonwang329.workers.dev"
