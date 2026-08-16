@@ -76,7 +76,7 @@
     return null;
   }
 
-  function recentGameFromFeed(player, stat, feed, side) {
+  function recentGameFromFeed(player, stat, feed, side, isLive) {
     const gamePk = Number(feed?.gamePk || feed?.gameData?.game?.pk);
     const gameDate = feed?.gameData?.datetime?.officialDate || new Date().toISOString().slice(0, 10);
     const home = feed?.gameData?.teams?.home;
@@ -89,7 +89,8 @@
       stat: { ...stat },
       team: team?.id ? { id: team.id, name: team.name } : undefined,
       opponent: opponent?.id ? { id: opponent.id, name: opponent.name } : undefined,
-      game: { gamePk }
+      game: { gamePk },
+      live: isLive
     };
   }
 
@@ -111,6 +112,10 @@
     holder.innerHTML = gameRows(player, result.games || []);
     const replacement = holder.firstElementChild;
     if (!replacement) return;
+    if (result.today?.live) {
+      const firstResult = replacement.querySelector('.game-row:not(.game-head) span:nth-child(2)');
+      if (firstResult) firstResult.textContent = 'LIVE';
+    }
     if (existing) existing.replaceWith(replacement); else section.appendChild(replacement);
   }
 
@@ -134,7 +139,7 @@
       live: isLive
     };
 
-    const currentGame = recentGameFromFeed(player, stat, feed, entry.side);
+    const currentGame = recentGameFromFeed(player, stat, feed, entry.side, isLive);
     currentGame.level = result.today.level;
     mergeRecentGame(result, currentGame);
 
