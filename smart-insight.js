@@ -102,8 +102,9 @@
     const card=document.querySelector(`#player-${player.id}`);if(!card||!result)return;
     card.querySelector('.ai-insight')?.remove();
     const read=insightFor(player,result),section=document.createElement('section');
+    const liveNote=result?.today?.live?' · 含今日 LIVE 暫時成績':'';
     section.className='ai-insight';
-    section.innerHTML=`<div class="ai-insight-head"><span>AI INSIGHT</span><small>20-sec read · data-based v1</small></div><div class="ai-insight-row"><b>Trend</b><p>${esc(read.trend)}</p></div><div class="ai-insight-row"><b>What it may mean</b><p>${esc(read.meaning)}</p></div><div class="ai-insight-row"><b>Watch next</b><p>${esc(read.watch)}</p></div><small class="ai-insight-note">依 MLB / MiLB 官方 box score、近況與球季數據產生；屬資料推論，不假設未觀測到的配球或教練策略。</small>${officialLinks(player,result)}`;
+    section.innerHTML=`<div class="ai-insight-head"><span>AI INSIGHT</span><small>20-sec read · data-based v1${liveNote}</small></div><div class="ai-insight-row"><b>Trend</b><p>${esc(read.trend)}</p></div><div class="ai-insight-row"><b>What it may mean</b><p>${esc(read.meaning)}</p></div><div class="ai-insight-row"><b>Watch next</b><p>${esc(read.watch)}</p></div><small class="ai-insight-note">依 MLB / MiLB 官方 box score、近況與球季數據產生；屬資料推論，不假設未觀測到的配球或教練策略。</small>${officialLinks(player,result)}`;
     const anchor=card.querySelector('.today-detail');
     if(anchor)anchor.insertAdjacentElement('afterend',section);else card.appendChild(section);
   }
@@ -115,5 +116,6 @@
   }
 
   document.addEventListener('tracker:players-loaded',()=>renderAll());
+  window.addEventListener('tracker:live-fast-refresh',()=>renderAll());
   renderAll();
 })();
