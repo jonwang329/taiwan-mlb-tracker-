@@ -1,299 +1,38 @@
-const latestLineUserKey = 'line:latest-user';
-const latestWebhookAttemptKey = 'line:webhook:last-attempt';
-const coachStateKey = 'coach:current-offer';
-const confirmAttemptKey = 'confirm:last-attempt';
-const COACH_PIN_SHA256 = '82df3b192bcd6c205e694b66ad9f8b89bf3226b6f7068724f9b60672462f6ae7';
+const latestLineUserKey='line:latest-user';
+const latestWebhookAttemptKey='line:webhook:last-attempt';
+const coachStateKey='coach:current-offer';
+const confirmAttemptKey='confirm:last-attempt';
+const COACH_PIN_SHA256='0a4e3e70597a358b9447fa8a647aadf5b76dde95c8e4ab02e5f8cee6caa1cd28'; // 4826
 
-const json = (x, status = 200) => new Response(JSON.stringify(x), {
-  status,
-  headers: {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store'
-  }
-});
+const json=(x,status=200)=>new Response(JSON.stringify(x),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function b64(v){try{return Uint8Array.from(atob(v),c=>c.charCodeAt(0))}catch{return null}}
+async function sha256Hex(text){const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('')}
+async function coachOK(req){const u=new URL(req.url),pin=req.headers.get('x-eddie-coach-pin')||u.searchParams.get('pin')||'';return !!pin&&(await sha256Hex(pin))===COACH_PIN_SHA256}
+async function verifySig(raw,sig,secret){if(!sig||!secret)return false;const s=b64(sig);if(!s)return false;const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['verify']);return crypto.subtle.verify('HMAC',k,s,new TextEncoder().encode(raw))}
+async function profile(env,userId){if(!env.LINE_CHANNEL_ACCESS_TOKEN||!userId)return null;try{const r=await fetch('https://api.line.me/v2/bot/profile/'+encodeURIComponent(userId),{headers:{Authorization:'Bearer '+env.LINE_CHANNEL_ACCESS_TOKEN}});if(!r.ok)return null;const p=await r.json();return{displayName:p.displayName||'',pictureUrl:p.pictureUrl||''}}catch{return null}}
+async function pushText(env,userId,text){if(!env.LINE_CHANNEL_ACCESS_TOKEN||!userId)return{ok:false,status:0};const r=await fetch('https://api.line.me/v2/bot/message/push',{method:'POST',headers:{Authorization:'Bearer '+env.LINE_CHANNEL_ACCESS_TOKEN,'content-type':'application/json'},body:JSON.stringify({to:userId,messages:[{type:'text',text}]})});return{ok:r.ok,status:r.status}}
+async function recordLine(env,event){const userId=event?.source?.userId;if(!userId)return;const key='line:user:'+userId,prev=await env.EDDIE_KV.get(key,'json'),now=new Date().toISOString(),p=event.type==='unfollow'?null:await profile(env,userId);const rec={userId,displayName:p?.displayName||prev?.displayName||'',pictureUrl:p?.pictureUrl||prev?.pictureUrl||'',status:event.type==='unfollow'?'blocked':'active',firstSeenAt:prev?.firstSeenAt||now,lastSeenAt:now,lastEventType:event.type||'unknown'};await Promise.all([env.EDDIE_KV.put(key,JSON.stringify(rec)),env.EDDIE_KV.put(latestLineUserKey,JSON.stringify(rec))])}
+async function webhook(req,env,ctx){if(req.method!=='POST')return json({error:'method not allowed'},405);const raw=await req.text(),sig=req.headers.get('x-line-signature')||'',valid=await verifySig(raw,sig,env.LINE_CHANNEL_SECRET);await env.EDDIE_KV.put(latestWebhookAttemptKey,JSON.stringify({receivedAt:new Date().toISOString(),signaturePresent:!!sig,signatureValid:!!valid}));if(!valid)return json({error:'invalid signature'},401);let body;try{body=JSON.parse(raw)}catch{return json({error:'invalid json'},400)}const events=Array.isArray(body.events)?body.events:[];const work=Promise.all(events.map(e=>recordLine(env,e)));if(events.length&&ctx?.waitUntil)ctx.waitUntil(work);else if(events.length)await work;return json({ok:true,received:events.length})}
+async function lineConfig(req,env){if(!env.LINE_CHANNEL_ACCESS_TOKEN)return json({ok:false},503);try{const r=await fetch('https://api.line.me/v2/bot/channel/webhook/endpoint',{headers:{Authorization:'Bearer '+env.LINE_CHANNEL_ACCESS_TOKEN}}),b=await r.json().catch(()=>({})),expected=new URL(req.url).origin+'/webhook';return json({ok:r.ok,active:b.active===true,endpointMatchesExpected:b.endpoint===expected,httpStatus:r.status},r.ok?200:502)}catch{return json({ok:false},502)}}
+function cleanOffers(a){return[...new Set((Array.isArray(a)?a:[]).map(x=>String(x).trim()).filter(Boolean))].filter(x=>/^週[一二三四五] \d{2}:00–\d{2}:00$/.test(x)).slice(0,3)}
+async function sendOffer(req,env){if(req.method!=='POST')return json({error:'method not allowed'},405);if(!(await coachOK(req)))return json({error:'unauthorized'},401);const body=await req.json().catch(()=>({})),offers=cleanOffers(body.offers);if(!offers.length)return json({error:'請先選擇至少一個時段'},400);const u=await env.EDDIE_KV.get(latestLineUserKey,'json');if(!u?.userId||u.status!=='active')return json({error:'目前沒有已連結的 LINE 學員'},409);if(body.recipientName&&body.recipientName!==u.displayName)return json({error:'這位學員尚未完成 LINE 綁定；目前可測試的是 '+(u.displayName||'最新學員')},409);const token=crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-','').slice(0,16),now=new Date().toISOString();const state={name:u.displayName||'學員',lineUserId:u.userId,status:'offered',offers,confirmed:null,released:[],mode:body.mode||'choices',sessions:Number(body.sessions)||1,linePushPolicy:'offer-only',createdAt:now,updatedAt:now};await Promise.all([env.EDDIE_KV.put('portal:'+token,JSON.stringify(state),{expirationTtl:604800}),env.EDDIE_KV.put(coachStateKey,JSON.stringify({...state,lineUserId:undefined,portalToken:token}))]);const url=new URL(req.url).origin+'/student/'+token;const text=`Eddie Training｜本週排課\n\nHi ${state.name} 👋\n教練提供以下時間：\n${offers.map(x=>'• '+x).join('\n')}\n\n請點連結選擇並確認：\n${url}`;const line=await pushText(env,u.userId,text);if(!line.ok){state.status='send_failed';state.updatedAt=new Date().toISOString();await env.EDDIE_KV.put(coachStateKey,JSON.stringify({...state,lineUserId:undefined,portalToken:token}));return json({ok:false,error:'LINE 發送失敗',lineStatus:line.status},502)}return json({ok:true,recipient:state.name,offers:state.offers,lineStatus:line.status,linePushPolicy:'offer-only'})}
+async function dash(env){const[u,s]=await Promise.all([env.EDDIE_KV.get(latestLineUserKey,'json'),env.EDDIE_KV.get(coachStateKey,'json')]);return json({student:u?{name:u.displayName||'學員',status:u.status,lastSeenAt:u.lastSeenAt}:null,schedule:s?{name:s.name,status:s.status,offers:s.offers||[],confirmed:s.confirmed||null,released:s.released||[],mode:s.mode||'choices',sessions:s.sessions||1,updatedAt:s.updatedAt||null}:null,linePushPolicy:'offer-only'})}
+function studentPage(s,token){const done=s.status==='confirmed';const body=done?`<div class="done"><b>✓ 已確認</b><strong>${esc(s.confirmed)}</strong></div><p>其他候選時間已自動釋放。你已完成，不需要再回覆 LINE。</p>`:`<form method="post" action="/student/${token}/confirm-form">${s.offers.map((x,i)=>`<label class="opt"><input type="radio" name="slot" value="${esc(x)}" ${i===0?'required':''}><span>${esc(x)}</span></label>`).join('')}<button>確認這個時間</button></form>`;return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eddie Training 學員選課</title><style>*{box-sizing:border-box}body{margin:0;background:#f5f7fa;color:#172033;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:620px;margin:auto;padding:24px 16px}.tag{font-size:15px;font-weight:900;color:#8b3d59;letter-spacing:.08em}.card{margin-top:12px;background:#fff;border:1px solid #e3e8ef;border-radius:24px;padding:26px;box-shadow:0 12px 36px #17203312}h1{font-size:34px;margin:0 0 10px;color:#173b66}p{font-size:19px;line-height:1.6;color:#5f6d7e}.opt{display:flex;align-items:center;gap:16px;background:#fff1f5;border:2px solid #e3a4b8;border-radius:18px;padding:20px;margin:14px 0;font-size:24px;font-weight:850}.opt input{width:26px;height:26px}.opt:has(input:checked){background:#fff;outline:4px solid #173b66}button{width:100%;margin-top:18px;border:0;border-radius:16px;padding:19px;background:#173b66;color:#fff;font-size:22px;font-weight:900}.done{background:#edf7ee;border:2px solid #afd3b4;border-radius:18px;padding:22px}.done b{display:block;font-size:20px;color:#477454}.done strong{display:block;font-size:28px;margin-top:6px;color:#244c30}</style></head><body><div class="wrap"><div class="tag">EDDIE TRAINING｜學員選課</div><div class="card"><h1>${esc(s.name)}，你好 👋</h1><p>${done?'你的訓練時間已經確認。':'請選擇一個適合你的訓練時間。只有按「確認這個時間」才會正式完成。'}</p>${body}</div></div></body></html>`}
+async function confirm(env,token,slot,mode){const key='portal:'+token,s=await env.EDDIE_KV.get(key,'json');await env.EDDIE_KV.put(confirmAttemptKey,JSON.stringify({receivedAt:new Date().toISOString(),mode,linkFound:!!s,slotPresent:!!slot}));if(!s)return{ok:false,status:404,error:'排課連結已失效'};if(s.status==='confirmed')return{ok:true,state:s};if(!slot||!s.offers.includes(slot))return{ok:false,status:400,error:'請先選擇有效時段'};const original=[...s.offers];s.confirmed=slot;s.released=original.filter(x=>x!==slot);s.offers=[slot];s.status='confirmed';s.updatedAt=new Date().toISOString();await Promise.all([env.EDDIE_KV.put(key,JSON.stringify(s),{expirationTtl:604800}),env.EDDIE_KV.put(coachStateKey,JSON.stringify({...s,lineUserId:undefined,portalToken:token}))]);return{ok:true,state:s}}
+function errorPage(msg,status=400){return new Response(`<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;padding:28px;font-size:20px"><h2>無法完成</h2><p>${esc(msg)}</p></body></html>`,{status,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}})}
+function coachPage(){
+const students=['Jon','Kevin','Amy','Joe',...Array.from({length:16},(_,i)=>'學員 '+String(i+5).padStart(2,'0'))];
+return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eddie 教練排課</title><style>
+:root{--bg:#f5f7fa;--ink:#172033;--muted:#6b7788;--line:#e3e8ef;--blue:#173b66;--blueSoft:#e6f0ff;--blueBorder:#9ebde1;--pink:#ffe5ee;--pinkStrong:#ffd0df;--pinkBorder:#e3a4b8;--pinkInk:#89364f;--green:#edf7ee;--greenBorder:#afd3b4;--greenInk:#477454;--warn:#fff4d9;--warnBorder:#e7cf97;--warnInk:#765f27}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}.app{max-width:1450px;margin:auto;padding:12px}.shell{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden}.top{padding:15px 18px;background:linear-gradient(135deg,#173b66,#2f6198);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:12px}.top small{font-size:14px;font-weight:900;letter-spacing:.09em}.top h1{margin:3px 0;font-size:30px}.top p{margin:0;font-size:16px;opacity:.9}.live{font-size:15px;font-weight:850;padding:8px 12px;border:1px solid #ffffff66;border-radius:999px}.summary{display:flex;gap:24px;padding:11px 16px;border-bottom:1px solid var(--line);font-size:16px;overflow:auto}.summary b{font-size:20px;color:var(--blue)}.toolbar{padding:14px 16px;background:#fbfcfe;border-bottom:1px solid var(--line)}.label{font-size:15px;font-weight:950;color:#526170;margin-bottom:8px}.students{display:grid;grid-template-columns:repeat(10,minmax(86px,1fr));gap:7px}.student{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 7px;min-height:48px;font-size:15px;font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.student.active{background:var(--pink);border-color:var(--pinkBorder);color:var(--pinkInk);box-shadow:0 0 0 2px #e3a4b833 inset}.student.unpaired{color:#a3abb5;background:#fafbfc}.controls{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(360px,1.5fr) minmax(250px,1fr) minmax(260px,1fr);gap:10px;margin-top:12px}.box{border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px}.box small{display:block;font-size:14px;font-weight:900;color:var(--muted);margin-bottom:7px}.box strong{font-size:20px}.strip{display:flex;gap:7px;flex-wrap:wrap}.mode,.count{border:1px solid var(--line);background:#f7f8fa;border-radius:9px;padding:10px 12px;font-size:16px;font-weight:900;color:#7d8794}.mode.on[data-mode="fixed"]{background:var(--warn);border-color:var(--warnBorder);color:var(--warnInk)}.mode.on[data-mode="choices"]{background:#fff7fa;border-color:var(--pinkBorder);color:var(--pinkInk)}.mode.on[data-mode="free"]{background:var(--green);border-color:var(--greenBorder);color:var(--greenInk)}.count.on{background:var(--blueSoft);border-color:var(--blueBorder);color:#2e6097}.pinRow{display:flex;gap:7px}.pinRow input{min-width:0;width:100%;border:1px solid var(--line);border-radius:9px;padding:10px;font-size:17px}.pinRow button{border:0;border-radius:9px;background:var(--blue);color:#fff;padding:10px 12px;font-size:16px;font-weight:900}.hint{margin-top:9px;padding:9px 11px;border-radius:10px;background:#fff7fa;border:1px solid var(--pinkBorder);font-size:16px}.calendarWrap{padding:12px 14px 16px;overflow:auto}.cal{display:grid;grid-template-columns:72px repeat(5,minmax(140px,1fr));min-width:820px;border-top:1px solid var(--line);border-left:1px solid var(--line)}.head,.time,.slot{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.head{height:44px;display:grid;place-items:center;font-size:16px;font-weight:900;background:#fbfcfe}.time{padding:15px 4px;text-align:center;font-size:14px;color:var(--muted);background:#fbfcfe}.slot{min-height:62px;padding:5px}.cell{height:100%;min-height:52px;border-radius:9px;padding:8px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;border:1px dashed #d4dde7}.cell b{font-size:15px}.cell small{font-size:12px;color:var(--muted);margin-top:2px}.cell.selected{background:var(--pink);border:1px solid var(--pinkBorder)}.cell.dinner{background:var(--blueSoft);border:1px solid var(--blueBorder);color:#416587}.cell.confirmed{background:var(--green);border:1px solid var(--greenBorder);color:var(--greenInk)}.sendbar{display:flex;align-items:center;gap:10px;padding:12px 15px;border-top:1px solid var(--line);background:#fbfcfe}.selectedText{flex:1;font-size:16px;font-weight:800;color:#526170}.send{border:0;border-radius:11px;background:var(--blue);color:#fff;padding:13px 20px;font-size:18px;font-weight:950}.send:disabled{opacity:.35}.clear{border:1px solid var(--line);background:#fff;border-radius:11px;padding:12px 15px;font-size:16px;font-weight:850}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#172033;color:#fff;border-radius:999px;padding:12px 18px;font-size:16px;display:none}.toast.show{display:block}@media(max-width:1000px){.students{grid-template-columns:repeat(5,minmax(90px,1fr))}.controls{grid-template-columns:1fr 1fr}.top h1{font-size:26px}}@media(max-width:650px){.students{grid-template-columns:repeat(4,minmax(75px,1fr))}.controls{grid-template-columns:1fr}.app{padding:5px}.student{font-size:14px}}
+</style></head><body><div class="app"><div class="shell"><div class="top"><div><small>EDDIE TRAINING｜教練專用</small><h1>每週排課</h1><p>學生、排課方式、堂數與週課表全部在同一頁。</p></div><div class="live" id="live">LINE 連線中…</div></div><div class="summary"><span>目前學員 <b id="sumStudent">—</b></span><span>狀態 <b id="sumStatus">—</b></span><span>已確認 <b id="sumConfirmed">—</b></span></div><div class="toolbar"><div class="label">學員</div><div class="students" id="students">${students.map((n,i)=>`<button class="student ${n==='Kevin'?'':'unpaired'}" data-name="${n}">${n}</button>`).join('')}</div><div class="controls"><div class="box"><small>目前選擇</small><strong id="selectedStudent">Kevin</strong></div><div class="box"><small>排課方式</small><div class="strip"><button class="mode" data-mode="fixed">固定時段</button><button class="mode on" data-mode="choices">教練給選項</button><button class="mode" data-mode="free">自由選空檔</button></div></div><div class="box"><small>每週堂數</small><div class="strip"><button class="count on" data-count="1">1 堂</button><button class="count" data-count="2">2 堂</button><button class="count" data-count="3">3 堂</button></div></div><div class="box"><small>教練安全鎖</small><div class="pinRow"><input id="pin" type="password" inputmode="numeric" placeholder="Coach PIN"><button id="unlock">解鎖</button></div><div id="pinStatus" style="font-size:13px;color:#6b7788;margin-top:5px">此裝置第一次輸入一次即可。</div></div></div><div class="hint" id="hint">Kevin：每週 1 堂，由教練提供數個候選時段，學員最後選 1 個。</div></div><div class="calendarWrap"><div class="cal" id="cal"></div></div><div class="sendbar"><div class="selectedText" id="selectedText">尚未選擇時間</div><button class="clear" id="clear">清除</button><button class="send" id="send" disabled>送出 LINE 排課</button></div></div></div><div class="toast" id="toast"></div><script>
+const D=['週一','週二','週三','週四','週五'],H=[12,13,14,15,16,17,18,19,20];let selected=[],student='Kevin',mode='choices',sessions=1,state=null,pin=localStorage.getItem('eddie-coach-pin')||'';const $=x=>document.getElementById(x),hh=n=>String(n).padStart(2,'0')+':00',label=(d,h)=>D[d]+' '+hh(h)+'–'+hh(h+1);function toast(t){$('toast').textContent=t;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2200)}function updateHint(){const m=mode==='fixed'?'固定時段':mode==='free'?'自由選空檔':'教練給選項';$('hint').textContent=student+'：每週 '+sessions+' 堂，排課方式為「'+m+'」。'+(mode==='choices'?'可先提供 1–3 個候選時段。':mode==='fixed'?'請直接點選固定時段。':'學生將從可用空檔自行選擇。')}
+function renderStudents(){document.querySelectorAll('.student').forEach(b=>{b.classList.toggle('active',b.dataset.name===student);b.onclick=()=>{student=b.dataset.name;selected=[];$('selectedStudent').textContent=student;renderStudents();renderCal();renderSelected();updateHint()}})}
+function renderCal(){let out='<div class="head"></div>'+D.map(x=>'<div class="head">'+x+'</div>').join('');const confirmed=state?.schedule?.confirmed||'';for(const h of H){out+='<div class="time">'+hh(h)+'</div>';for(let d=0;d<5;d++){const x=label(d,h),sel=selected.includes(x),conf=confirmed===x&&state?.schedule?.name===student,dinner=h===18&&!sel&&!conf;out+='<div class="slot"><div class="cell '+(conf?'confirmed':sel?'selected':dinner?'dinner':'')+'" data-slot="'+x+'"><b>'+(conf?'✓ 已確認':sel?'已選':dinner?'教練晚餐':'可排')+'</b><small>'+hh(h)+'–'+hh(h+1)+'</small></div></div>'}}$('cal').innerHTML=out;document.querySelectorAll('[data-slot]').forEach(el=>el.onclick=()=>{const x=el.dataset.slot;if(selected.includes(x))selected=selected.filter(v=>v!==x);else{const max=mode==='choices'?3:sessions;if(selected.length>=max)selected=selected.slice(1);selected.push(x)}renderCal();renderSelected()})}
+function renderSelected(){$('selectedText').textContent=selected.length?'已選：'+selected.join('、'):'尚未選擇時間';$('send').disabled=!pin||!selected.length||student!=='Kevin'}
+function renderState(){const s=state?.student,sc=state?.schedule;$('live').textContent='● LINE 已連線';$('sumStudent').textContent=s?.name||'—';$('sumStatus').textContent=sc?.status==='confirmed'?'已確認':sc?.status==='offered'?'等待學員':'可排課';$('sumConfirmed').textContent=sc?.confirmed||'—';if(sc?.name===student&&sc?.status==='offered'&&!selected.length)selected=[...(sc.offers||[])];renderCal();renderSelected()}
+async function refresh(){try{const r=await fetch('/api/dashboard',{cache:'no-store'});state=await r.json();renderState()}catch{$('live').textContent='LINE 狀態未知'}}
+document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('on',x===b));selected=[];updateHint();renderCal();renderSelected()});document.querySelectorAll('.count').forEach(b=>b.onclick=()=>{sessions=+b.dataset.count;document.querySelectorAll('.count').forEach(x=>x.classList.toggle('on',x===b));selected=selected.slice(0,mode==='choices'?3:sessions);updateHint();renderCal();renderSelected()});$('unlock').onclick=()=>{const v=$('pin').value.trim();if(!v)return;pin=v;localStorage.setItem('eddie-coach-pin',pin);$('pinStatus').textContent='已在此裝置記住 Coach PIN';$('pin').value='';renderSelected();toast('教練操作已解鎖')};if(pin)$('pinStatus').textContent='此裝置已記住 Coach PIN';$('clear').onclick=()=>{selected=[];renderCal();renderSelected()};$('send').onclick=async()=>{if(!pin||!selected.length)return;$('send').disabled=true;$('send').textContent='傳送中…';try{const r=await fetch('/api/send-offer',{method:'POST',headers:{'content-type':'application/json','x-eddie-coach-pin':pin},body:JSON.stringify({recipientName:student,offers:selected,mode,sessions})}),o=await r.json();if(!r.ok){if(r.status===401){pin='';localStorage.removeItem('eddie-coach-pin');$('pinStatus').textContent='PIN 不正確，請重新輸入'}toast(o.error||'傳送失敗')}else{toast('已送給 '+o.recipient);await refresh()}}catch{toast('網路錯誤')}finally{$('send').textContent='送出 LINE 排課';renderSelected()}};renderStudents();updateHint();refresh();setInterval(refresh,4000);
+</script></body></html>`}
 
-function decodeBase64(value) {
-  try { return Uint8Array.from(atob(value), c => c.charCodeAt(0)); }
-  catch { return null; }
-}
-
-function randomToken() {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  return [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-async function sha256Hex(text) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function isCoachAuthorized(request) {
-  const url = new URL(request.url);
-  const pin = request.headers.get('x-eddie-coach-pin') || url.searchParams.get('pin') || '';
-  if (!pin) return false;
-  return (await sha256Hex(pin)) === COACH_PIN_SHA256;
-}
-
-async function verifyLineSignature(rawBody, signature, channelSecret) {
-  if (!signature || !channelSecret) return false;
-  const signatureBytes = decodeBase64(signature);
-  if (!signatureBytes) return false;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', encoder.encode(channelSecret),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
-  );
-  return crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(rawBody));
-}
-
-async function fetchLineProfile(env, userId) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !userId) return null;
-  try {
-    const r = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`, {
-      headers: { Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` }
-    });
-    if (!r.ok) return null;
-    const p = await r.json();
-    return { displayName: p.displayName || '', pictureUrl: p.pictureUrl || '' };
-  } catch { return null; }
-}
-
-async function pushLineText(env, userId, text) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN || !userId) {
-    return { ok: false, status: 0, reason: 'missing-token-or-user' };
-  }
-  const r = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`,
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({
-      to: userId,
-      messages: [{ type: 'text', text }]
-    })
-  });
-  return { ok: r.ok, status: r.status };
-}
-
-async function recordLineEvent(env, event) {
-  const userId = event?.source?.userId;
-  if (!userId) return;
-  const key = `line:user:${userId}`;
-  const previous = await env.EDDIE_KV.get(key, 'json');
-  const now = new Date().toISOString();
-  const profile = event.type === 'unfollow' ? null : await fetchLineProfile(env, userId);
-  const record = {
-    userId,
-    displayName: profile?.displayName || previous?.displayName || '',
-    pictureUrl: profile?.pictureUrl || previous?.pictureUrl || '',
-    sourceType: event?.source?.type || previous?.sourceType || 'user',
-    status: event.type === 'unfollow' ? 'blocked' : 'active',
-    firstSeenAt: previous?.firstSeenAt || now,
-    lastSeenAt: now,
-    lastEventType: event.type || 'unknown'
-  };
-  await Promise.all([
-    env.EDDIE_KV.put(key, JSON.stringify(record)),
-    env.EDDIE_KV.put(latestLineUserKey, JSON.stringify(record))
-  ]);
-}
-
-async function handleWebhook(request, env, ctx) {
-  if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
-  const rawBody = await request.text();
-  const signature = request.headers.get('x-line-signature') || '';
-  const valid = await verifyLineSignature(rawBody, signature, env.LINE_CHANNEL_SECRET);
-  await env.EDDIE_KV.put(latestWebhookAttemptKey, JSON.stringify({
-    receivedAt: new Date().toISOString(),
-    signaturePresent: Boolean(signature),
-    signatureValid: Boolean(valid)
-  }));
-  if (!valid) return json({ error: 'invalid signature' }, 401);
-  let payload;
-  try { payload = JSON.parse(rawBody); }
-  catch { return json({ error: 'invalid json' }, 400); }
-  const events = Array.isArray(payload.events) ? payload.events : [];
-  const work = Promise.all(events.map(event => recordLineEvent(env, event)));
-  if (events.length && ctx?.waitUntil) ctx.waitUntil(work); else if (events.length) await work;
-  return json({ ok: true, received: events.length });
-}
-
-async function publicLineWebhookConfig(request, env) {
-  if (!env.LINE_CHANNEL_ACCESS_TOKEN) return json({ ok: false, reason: 'token-missing' }, 503);
-  try {
-    const r = await fetch('https://api.line.me/v2/bot/channel/webhook/endpoint', {
-      headers: { Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` }
-    });
-    const body = await r.json().catch(() => ({}));
-    const expected = `${new URL(request.url).origin}/webhook`;
-    return json({ ok: r.ok, active: body.active === true, endpointMatchesExpected: body.endpoint === expected, httpStatus: r.status }, r.ok ? 200 : 502);
-  } catch { return json({ ok: false, reason: 'line-api-unreachable' }, 502); }
-}
-
-function normalizeOffers(input) {
-  const unique = [...new Set((Array.isArray(input) ? input : []).map(x => String(x).trim()).filter(Boolean))];
-  return unique.filter(x => /^週[一二三四五] \d{2}:00–\d{2}:00$/.test(x)).slice(0, 3);
-}
-
-async function sendOffer(request, env) {
-  if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
-  if (!(await isCoachAuthorized(request))) return json({ error: 'unauthorized' }, 401);
-  const body = await request.json().catch(() => ({}));
-  const offers = normalizeOffers(body.offers);
-  if (!offers.length) return json({ error: 'choose at least one slot' }, 400);
-
-  const lineUser = await env.EDDIE_KV.get(latestLineUserKey, 'json');
-  if (!lineUser?.userId || lineUser.status !== 'active') return json({ error: 'no active LINE student captured' }, 409);
-
-  const token = randomToken();
-  const now = new Date().toISOString();
-  const state = {
-    name: lineUser.displayName || 'Student',
-    lineUserId: lineUser.userId,
-    status: 'offered',
-    offers,
-    confirmed: null,
-    released: [],
-    linePushPolicy: 'offer-only',
-    createdAt: now,
-    updatedAt: now
-  };
-  await Promise.all([
-    env.EDDIE_KV.put(`portal:${token}`, JSON.stringify(state), { expirationTtl: 60 * 60 * 24 * 7 }),
-    env.EDDIE_KV.put(coachStateKey, JSON.stringify({ ...state, lineUserId: undefined, portalToken: token }))
-  ]);
-
-  const origin = new URL(request.url).origin;
-  const studentUrl = `${origin}/student/${token}`;
-  const text = `Eddie Training｜本週排課\n\nHi ${state.name} 👋\n請從以下時段選擇：\n${offers.map(x => `• ${x}`).join('\n')}\n\n點這裡選擇並 Confirm：\n${studentUrl}`;
-  const line = await pushLineText(env, lineUser.userId, text);
-  if (!line.ok) {
-    state.status = 'send_failed';
-    state.updatedAt = new Date().toISOString();
-    await env.EDDIE_KV.put(coachStateKey, JSON.stringify({ ...state, lineUserId: undefined, portalToken: token }));
-    return json({ ok: false, lineStatus: line.status }, 502);
-  }
-  return json({ ok: true, recipient: state.name, offers: state.offers, lineStatus: line.status });
-}
-
-async function dashboardState(env) {
-  const [latest, state] = await Promise.all([
-    env.EDDIE_KV.get(latestLineUserKey, 'json'),
-    env.EDDIE_KV.get(coachStateKey, 'json')
-  ]);
-  return json({
-    student: latest ? { name: latest.displayName || 'Student', status: latest.status, lastSeenAt: latest.lastSeenAt } : null,
-    schedule: state ? {
-      name: state.name,
-      status: state.status,
-      offers: state.offers || [],
-      confirmed: state.confirmed || null,
-      released: state.released || [],
-      updatedAt: state.updatedAt || null
-    } : null,
-    linePushPolicy: 'offer-only'
-  });
-}
-
-function studentPage(state, token) {
-  const confirmed = state.status === 'confirmed';
-  const safeName = escapeHtml(state.name || 'Student');
-  const body = confirmed
-    ? `<div class="confirmed"><div class="check">✓</div><div><small>已確認</small><strong>${escapeHtml(state.confirmed)}</strong></div></div><p class="muted">其他候選時段已自動釋放。你不用再回 LINE。</p>`
-    : `<form method="post" action="/student/${token}/confirm-form">${state.offers.map((x, i) => `<label class="slot"><input type="radio" name="slot" value="${escapeHtml(x)}" ${i === 0 ? 'required' : ''}><span>${escapeHtml(x)}</span></label>`).join('')}<button class="confirm" type="submit">Confirm</button></form>`;
-  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eddie Training</title><style>
-  :root{--navy:#102a43;--ink:#172033;--muted:#718096;--line:#e8edf3;--pink:#fff2f6;--pink2:#f7d8e3;--green:#edf8f0}
-  *{box-sizing:border-box}body{margin:0;background:#f6f8fb;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:580px;margin:auto;padding:24px 16px}.brand{font-size:11px;font-weight:900;letter-spacing:.13em;color:#9a4963;margin-bottom:12px}.card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:24px;box-shadow:0 18px 50px rgba(16,42,67,.08)}h1{font-size:28px;margin:0 0 8px}.muted{font-size:14px;color:var(--muted);line-height:1.6}.slot{display:flex;align-items:center;gap:14px;border:1px solid #ead0d9;background:var(--pink);padding:17px;border-radius:16px;margin:10px 0;font-weight:750}.slot input{width:21px;height:21px}.slot:has(input:checked){outline:3px solid #183b66;background:#fff}.confirm{width:100%;border:0;background:var(--navy);color:#fff;padding:16px;border-radius:14px;font-size:16px;font-weight:850;margin-top:14px}.confirmed{display:flex;align-items:center;gap:14px;background:var(--green);border:1px solid #cfe8d4;padding:18px;border-radius:18px}.confirmed .check{width:42px;height:42px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:22px;color:#39704b}.confirmed small{display:block;color:#62806b;margin-bottom:3px}.confirmed strong{font-size:18px}
-  </style></head><body><div class="wrap"><div class="brand">EDDIE TRAINING</div><div class="card"><h1>Hi ${safeName} 👋</h1><p class="muted">選一個適合你的時段。只有按 Confirm 才會正式完成。</p>${body}</div></div></body></html>`;
-}
-
-async function applyConfirmation(env, token, slot, mode) {
-  const key = `portal:${token}`;
-  const state = await env.EDDIE_KV.get(key, 'json');
-  await env.EDDIE_KV.put(confirmAttemptKey, JSON.stringify({ receivedAt: new Date().toISOString(), mode, linkFound: Boolean(state), slotPresent: Boolean(slot) }));
-  if (!state) return { ok: false, status: 404, error: '排課連結已失效或不存在。' };
-  if (state.status === 'confirmed') return { ok: true, state };
-  if (!slot || !state.offers.includes(slot)) return { ok: false, status: 400, error: '請先選擇一個有效時段。' };
-  const originalOffers = [...state.offers];
-  state.confirmed = slot;
-  state.released = originalOffers.filter(x => x !== slot);
-  state.offers = [slot];
-  state.status = 'confirmed';
-  state.updatedAt = new Date().toISOString();
-  await Promise.all([
-    env.EDDIE_KV.put(key, JSON.stringify(state), { expirationTtl: 60 * 60 * 24 * 7 }),
-    env.EDDIE_KV.put(coachStateKey, JSON.stringify({ ...state, lineUserId: undefined, portalToken: token }))
-  ]);
-  return { ok: true, state };
-}
-
-function coachPage() {
-return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eddie Coach</title><style>
-:root{--navy:#102a43;--navy2:#173b66;--ink:#1f2937;--muted:#748094;--line:#e7ecf2;--bg:#f5f7fa;--pink:#fff2f6;--pinkB:#ebc9d5;--pinkI:#91445d;--green:#edf8f0;--greenI:#427051;--blue:#eef5fb;--shadow:0 18px 50px rgba(16,42,67,.08)}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.app{max-width:1420px;margin:auto;padding:18px}.shell{background:#fff;border:1px solid var(--line);border-radius:24px;overflow:hidden;box-shadow:var(--shadow)}
-.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 22px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#fbfcfe)}.brand small{font-size:10px;font-weight:900;letter-spacing:.16em;color:#9b4d65}.brand h1{margin:4px 0 0;font-size:25px;color:var(--navy)}.topRight{display:flex;align-items:center;gap:10px}.pill{padding:7px 10px;border-radius:999px;background:#f1f5f9;font-size:11px;font-weight:800;color:#526170}.dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:#45a06f;margin-right:6px}.layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;min-height:720px}.main{min-width:0}.side{border-left:1px solid var(--line);background:#fbfcfe;padding:20px}
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}.metric{border:1px solid var(--line);border-radius:16px;padding:13px 14px;background:#fff}.metric small{font-size:10px;color:var(--muted);font-weight:800}.metric b{display:block;margin-top:4px;font-size:18px;color:var(--navy)}
-.calWrap{padding:14px 16px 20px;overflow:auto}.weekbar{display:flex;justify-content:space-between;align-items:center;margin:2px 0 12px}.weekbar b{color:var(--navy);font-size:14px}.weekbar span{font-size:11px;color:var(--muted)}.cal{display:grid;grid-template-columns:64px repeat(5,minmax(130px,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line);min-width:760px}.head,.time,.slot{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.head{height:46px;display:grid;place-items:center;background:#fbfcfe;font-size:11px;font-weight:850;color:#526170}.time{padding-top:16px;text-align:center;color:#8792a3;font-size:10px;background:#fbfcfe}.slot{min-height:62px;padding:5px;background:#fff}.cell{height:100%;min-height:50px;border-radius:10px;display:flex;flex-direction:column;justify-content:center;padding:8px;cursor:pointer;transition:.12s ease;border:1px solid transparent}.cell:hover{background:#f8fafc}.cell.selected{background:var(--pink);border-color:var(--pinkB);box-shadow:inset 0 0 0 1px #fff}.cell.selected b{color:var(--pinkI)}.cell.confirmed{background:var(--green);border-color:#cce5d2}.cell.confirmed b{color:var(--greenI)}.cell.coach{background:var(--blue);color:#5e7490}.cell b{font-size:11px}.cell small{font-size:9px;color:var(--muted);margin-top:2px}
-.sideTitle{font-size:10px;font-weight:900;letter-spacing:.12em;color:#8a96a6;margin-bottom:10px}.studentCard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}.studentTop{display:flex;align-items:center;gap:12px}.avatar{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#163d68,#2d6ba3);color:#fff;display:grid;place-items:center;font-weight:900}.studentTop h3{margin:0;font-size:17px}.studentTop p{margin:3px 0 0;color:var(--muted);font-size:11px}.status{margin-top:14px;border-top:1px solid var(--line);padding-top:13px;display:flex;justify-content:space-between;align-items:center}.statusLabel{font-size:11px;color:var(--muted)}.statusValue{font-size:11px;font-weight:900;padding:5px 8px;border-radius:999px;background:#f1f5f9}.statusValue.confirmed{background:var(--green);color:var(--greenI)}.statusValue.offered{background:var(--pink);color:var(--pinkI)}
-.actionCard{border:1px solid var(--line);background:#fff;border-radius:18px;padding:16px}.actionCard h3{margin:0 0 6px;font-size:15px;color:var(--navy)}.actionCard p{margin:0 0 14px;color:var(--muted);font-size:11px;line-height:1.55}.selectedList{min-height:44px;margin-bottom:12px}.choice{display:flex;justify-content:space-between;align-items:center;background:var(--pink);border:1px solid var(--pinkB);border-radius:10px;padding:8px 10px;font-size:11px;margin-top:6px}.send{width:100%;border:0;background:var(--navy);color:#fff;border-radius:12px;padding:13px;font-weight:850}.send:disabled{opacity:.35}.ghost{width:100%;border:1px solid var(--line);background:#fff;color:#526170;border-radius:12px;padding:10px;font-weight:800;margin-top:8px}.note{margin-top:12px;font-size:10px;line-height:1.55;color:var(--muted)}.toast{position:fixed;right:20px;bottom:20px;background:#102a43;color:#fff;padding:12px 15px;border-radius:12px;font-size:12px;box-shadow:var(--shadow);opacity:0;transform:translateY(8px);transition:.18s}.toast.show{opacity:1;transform:none}.pinGate{display:none;margin-bottom:14px;border:1px dashed #cbd5e1;border-radius:14px;padding:12px;background:#fff}.pinGate input{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}.pinGate button{margin-top:8px;width:100%;border:0;border-radius:10px;padding:10px;background:#173b66;color:#fff;font-weight:800}
-@media(max-width:900px){.layout{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line)}.metrics{grid-template-columns:repeat(2,1fr)}.app{padding:8px}.shell{border-radius:16px}}
-</style></head><body><div class="app"><div class="shell"><div class="top"><div class="brand"><small>EDDIE TRAINING · COACH</small><h1>Weekly Schedule</h1></div><div class="topRight"><span class="pill"><span class="dot"></span>LINE connected</span><span class="pill" id="syncPill">Syncing…</span></div></div><div class="layout"><main class="main"><div class="metrics"><div class="metric"><small>STUDENT</small><b id="mStudent">—</b></div><div class="metric"><small>STATUS</small><b id="mStatus">—</b></div><div class="metric"><small>CONFIRMED</small><b id="mConfirmed">—</b></div><div class="metric"><small>LINE PUSH</small><b>Offer only</b></div></div><div class="calWrap"><div class="weekbar"><b>This week</b><span>Tap 1–3 time slots, then Send</span></div><div class="cal" id="calendar"></div></div></main><aside class="side"><div class="sideTitle">CURRENT STUDENT</div><div class="studentCard"><div class="studentTop"><div class="avatar" id="avatar">K</div><div><h3 id="studentName">Kevin</h3><p>LINE paired</p></div></div><div class="status"><span class="statusLabel">This week</span><span class="statusValue" id="statusBadge">Ready</span></div></div><div class="pinGate" id="pinGate"><b>Coach PIN</b><div class="note">Enter once on this device to enable Send.</div><input id="pinInput" type="password" autocomplete="off" placeholder="Coach PIN"><button id="unlockBtn">Unlock</button></div><div class="actionCard"><h3>Offer times</h3><p>Keep it simple: select the times you can offer. Student chooses one in LINE.</p><div class="selectedList" id="selectedList"></div><button class="send" id="sendBtn">Send to LINE</button><button class="ghost" id="clearBtn">Clear selection</button><div class="note">Confirm updates this dashboard automatically. No extra LINE message is sent after confirmation.</div></div></aside></div></div></div><div class="toast" id="toast"></div>
-<script>
-const D=['Mon','Tue','Wed','Thu','Fri']; const ZH=['週一','週二','週三','週四','週五']; const H=[12,13,14,15,16,17,18,19,20];
-let selected=[]; let state=null; let pin=localStorage.getItem('eddie-coach-pin')||'';
-const $=id=>document.getElementById(id); const hh=n=>String(n).padStart(2,'0')+':00';
-function slotLabel(d,h){return ZH[d]+' '+hh(h)+'–'+hh(h+1)}
-function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200)}
-function renderCal(){let html='<div class="head"></div>'+D.map(x=>'<div class="head">'+x+'</div>').join(''); const conf=state?.schedule?.confirmed||''; for(const h of H){html+='<div class="time">'+hh(h)+'</div>';for(let d=0;d<5;d++){const label=slotLabel(d,h),isSel=selected.includes(label),isConf=conf===label,isCoach=h===18&&!isSel&&!isConf;html+='<div class="slot"><div class="cell '+(isConf?'confirmed':isSel?'selected':isCoach?'coach':'')+'" data-slot="'+label+'"><b>'+(isConf?'Confirmed':isSel?'Selected':isCoach?'Coach time':'')+'</b><small>'+hh(h)+'–'+hh(h+1)+'</small></div></div>'}} $('calendar').innerHTML=html; document.querySelectorAll('[data-slot]').forEach(el=>el.onclick=()=>{const label=el.dataset.slot;if(state?.schedule?.status==='confirmed'&&state.schedule.confirmed===label)return;if(selected.includes(label))selected=selected.filter(x=>x!==label);else if(selected.length<3)selected=[...selected,label];renderCal();renderSelected()})}
-function renderSelected(){const box=$('selectedList');box.innerHTML=selected.length?selected.map(x=>'<div class="choice"><span>'+x+'</span><b>✓</b></div>').join(''):'<div class="note">No time selected yet.</div>'; $('sendBtn').disabled=!selected.length||!pin}
-function renderState(){const s=state?.student,sc=state?.schedule; const name=s?.name||sc?.name||'—'; $('studentName').textContent=name;$('avatar').textContent=(name[0]||'S').toUpperCase();$('mStudent').textContent=name;$('mStatus').textContent=sc?.status?sc.status[0].toUpperCase()+sc.status.slice(1):'Ready';$('mConfirmed').textContent=sc?.confirmed||'—';const b=$('statusBadge');b.textContent=sc?.status||'Ready';b.className='statusValue '+(sc?.status||'');$('syncPill').textContent='Live'; if(sc?.status==='offered'&&selected.length===0)selected=[...(sc.offers||[])]; renderCal();renderSelected(); $('pinGate').style.display=pin?'none':'block'}
-async function refresh(){try{const r=await fetch('/api/dashboard',{cache:'no-store'});state=await r.json();renderState()}catch{$('syncPill').textContent='Offline'}}
-$('clearBtn').onclick=()=>{selected=[];renderCal();renderSelected()}; $('unlockBtn').onclick=()=>{const v=$('pinInput').value.trim();if(!v)return;pin=v;localStorage.setItem('eddie-coach-pin',pin);$('pinGate').style.display='none';renderSelected();toast('Coach controls unlocked')};
-$('sendBtn').onclick=async()=>{if(!selected.length||!pin)return; $('sendBtn').disabled=true;$('sendBtn').textContent='Sending…';try{const r=await fetch('/api/send-offer',{method:'POST',headers:{'content-type':'application/json','x-eddie-coach-pin':pin},body:JSON.stringify({offers:selected})});const out=await r.json();if(!r.ok){if(r.status===401){pin='';localStorage.removeItem('eddie-coach-pin');$('pinGate').style.display='block';toast('Wrong Coach PIN')}else toast(out.error||'Send failed')}else{toast('Sent to '+out.recipient);await refresh()}}catch{toast('Network error')}finally{$('sendBtn').textContent='Send to LINE';renderSelected()}};
-refresh();setInterval(refresh,4000);
-</script></body></html>`;
-}
-
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    if (url.pathname === '/') return Response.redirect(`${url.origin}/coach`, 302);
-    if (url.pathname === '/coach') return new Response(coachPage(), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
-    if (url.pathname === '/health') return json({ ok: true, webhook: true, confirmMode: 'native-form', linePushPolicy: 'offer-only', coachUi: 'v16', storage: 'eddie-kv' });
-    if (url.pathname === '/webhook') return handleWebhook(request, env, ctx);
-    if (url.pathname === '/line-webhook-config') return publicLineWebhookConfig(request, env);
-    if (url.pathname === '/api/dashboard') return dashboardState(env);
-    if (url.pathname === '/api/send-offer') return sendOffer(request, env);
-    if (url.pathname === '/coach-status') return dashboardState(env);
-
-    if (url.pathname.startsWith('/student/')) {
-      const parts = url.pathname.split('/').filter(Boolean);
-      const token = parts[1] || '';
-      if (!/^[a-f0-9]{48}$/.test(token)) return json({ error: 'invalid link' }, 404);
-      if (parts[2] === 'confirm-form') {
-        if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
-        const form = await request.formData().catch(() => null);
-        const slot = form ? String(form.get('slot') || '') : '';
-        const result = await applyConfirmation(env, token, slot, 'form');
-        if (!result.ok) return new Response(`<h2>無法確認</h2><p>${escapeHtml(result.error)}</p>`, { status: result.status, headers: { 'content-type': 'text/html; charset=utf-8' } });
-        return Response.redirect(`${url.origin}/student/${token}`, 303);
-      }
-      if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
-      const state = await env.EDDIE_KV.get(`portal:${token}`, 'json');
-      if (!state) return new Response('This scheduling link has expired.', { status: 404 });
-      return new Response(studentPage(state, token), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
-    }
-    return json({ service: 'Eddie Training', ok: true }, 200);
-  }
-};
+export default{async fetch(req,env,ctx){const u=new URL(req.url);if(u.pathname==='/'||u.pathname==='/coach')return new Response(coachPage(),{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});if(u.pathname==='/health')return json({ok:true,webhook:true,confirmMode:'native-form',linePushPolicy:'offer-only',coachUi:'restored-one-page-zh',storage:'eddie-kv'});if(u.pathname==='/webhook')return webhook(req,env,ctx);if(u.pathname==='/line-webhook-config')return lineConfig(req,env);if(u.pathname==='/api/dashboard'||u.pathname==='/coach-status')return dash(env);if(u.pathname==='/api/send-offer')return sendOffer(req,env);if(u.pathname.startsWith('/student/')){const p=u.pathname.split('/').filter(Boolean),token=p[1]||'',action=p[2]||'',key='portal:'+token;if(!action&&req.method==='GET'){const s=await env.EDDIE_KV.get(key,'json');return s?new Response(studentPage(s,token),{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}}):errorPage('排課連結已失效',404)}if(action==='confirm-form'&&req.method==='POST'){const form=await req.formData(),r=await confirm(env,token,String(form.get('slot')||''),'form');if(!r.ok)return errorPage(r.error,r.status);return Response.redirect(new URL(req.url).origin+'/student/'+token,303)}if(action==='confirm'&&req.method==='POST'){const b=await req.json().catch(()=>({})),r=await confirm(env,token,String(b.slot||''),'json');return r.ok?json({ok:true,status:r.state.status,confirmed:r.state.confirmed}):json({error:r.error},r.status)}}return json({service:'Eddie Training',ok:true},200)}};
