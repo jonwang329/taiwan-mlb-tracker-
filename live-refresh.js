@@ -186,10 +186,12 @@
     const candidates = [];
     for (const pair of currentPairs()) {
       const { player, result } = pair;
-      const active = (result.levels || []).find(level => level.level === result.latest?.level) || (result.levels || []).find(level => level.season) || {};
-      const teamId = Number(result.today?.team?.id || result.latest?.team?.id || result.games?.[0]?.team?.id);
-      const sportId = Number(active.sportId || 1);
-      if (teamId) candidates.push({ player, result, teamId, sportId });
+      const teamIds = [
+        result.today?.team?.id,
+        result.latest?.team?.id,
+        ...(Array.isArray(result.games) ? result.games.slice(0, 5).map(game => game?.team?.id) : [])
+      ];
+      for (const teamId of teamIds.map(Number).filter(Boolean)) candidates.push({ player, result, teamId });
     }
     return candidates;
   }
@@ -202,9 +204,9 @@
       const { start, end } = scheduleQueryWindow(now);
       const candidates = teamCandidates();
       const unique = new Map();
-      for (const item of candidates) unique.set(`${item.sportId}:${item.teamId}`, item);
+      for (const item of candidates) unique.set(String(item.teamId), item);
       const settled = await Promise.allSettled([...unique.values()].map(async item => {
-        const json = await fetchJson(`${API}/schedule?sportId=${item.sportId}&teamId=${item.teamId}&startDate=${start}&endDate=${end}`);
+        const json = await fetchJson(`${API}/schedule?teamId=${item.teamId}&startDate=${start}&endDate=${end}`);
         return { item, games: (json.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now)) };
       }));
 
