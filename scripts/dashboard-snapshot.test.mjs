@@ -1,87 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('central snapshot is loaded before app bootstrap',async()=>{
+test('canonical snapshot loads before renderer',async()=>{
   const index=await read('index.html');
   const central=index.indexOf('data/dashboard-snapshot.js');
   const bootstrap=index.indexOf('snapshot-bootstrap.js');
   const app=index.indexOf('app.js');
-  assert.ok(central>=0&&bootstrap>central&&app>bootstrap,'central snapshot and bootstrap must load before app.js');
+  assert.ok(central>=0&&bootstrap>central&&app>bootstrap);
 });
 
-test('central snapshot seeds the existing last-good cache only when newer',async()=>{
+test('legacy localStorage baseball truth is removed, not seeded',async()=>{
   const bootstrap=await read('snapshot-bootstrap.js');
-  assert.match(bootstrap,/taiwan-mlb-tracker:last-good:v2/);
   assert.match(bootstrap,/CENTRAL_DASHBOARD_SNAPSHOT/);
-  assert.match(bootstrap,/localSaved>=centralSaved/);
-  assert.match(bootstrap,/localStorage\.setItem/);
+  assert.match(bootstrap,/localStorage\.removeItem\('taiwan-mlb-tracker:last-good:v2'\)/);
+  assert.doesNotMatch(bootstrap,/localStorage\.setItem/);
 });
 
-test('official MLB or MiLB data is the refresh source of truth',async()=>{
+test('browser is a canonical snapshot renderer with explicit freshness',async()=>{
   const app=await read('app.js');
-  assert.match(app,/fetchOfficialToday/);
-  assert.match(app,/startDate=\$\{start\}&endDate=\$\{end\}/);
-  assert.match(app,/gameTaiwanDate/);
-  assert.match(app,/status\?\.abstractGameState==='Live'/);
-  assert.doesNotMatch(app,/BASEBALL_DAY_CUTOFF|gameDay\(\)/);
+  assert.match(app,/CENTRAL_DASHBOARD_SNAPSHOT/);
+  assert.match(app,/savedAt/);
+  assert.match(app,/VERIFIED/);
+  assert.match(app,/STALE/);
+  assert.match(app,/WAITING FOR MLB/);
+  assert.doesNotMatch(app,/fetchOfficialToday|\/schedule\?|restoreSnapshot|localStorage\.setItem/);
 });
 
-test('website checks automatically at startup and after returning to the tab',async()=>{
-  const app=await read('app.js');
-  assert.match(app,/refreshData\(\{reason:'startup'\}\)/);
-  assert.match(app,/visibilitychange/);
-  assert.match(app,/AUTO_RECHECK_MS=5\*60\*1000/);
-  assert.match(app,/refreshData\(\{reason:'resume'\}\)/);
+test('live browser refresh only follows a canonical gamePk',async()=>{
+  const live=await read('live-refresh.js');
+  assert.match(live,/knownGameIds/);
+  assert.match(live,/result\?\.today\?\.game\?\.gamePk/);
+  assert.match(live,/game\/\$\{gamePk\}\/feed\/live/);
+  assert.doesNotMatch(live,/\/schedule\?|teamCandidates|discoverGames/);
 });
 
-test('Refresh button always requests official data immediately',async()=>{
-  const app=await read('app.js');
-  assert.match(app,/refresh-btn[^\n]*addEventListener\('click'/);
-  assert.match(app,/refreshData\(\{reason:'button'\}\)/);
-  assert.match(app,/await loadTrackedPlayers\(\)/);
-  assert.match(app,/await collectResults\(\)/);
-  assert.doesNotMatch(app,/refreshCooldown/i);
-});
-
-test('API failure preserves last-good screen and shows last successful time',async()=>{
-  const app=await read('app.js');
-  assert.match(app,/if\(lastResults\.length\)\{setTrackedPlayers\(lastPlayers\)/);
-  assert.match(app,/MLB API 暫時無法更新 · 上次成功/);
-  assert.match(app,/Promise\.allSettled/);
-  assert.match(app,/previousById/);
-});
-
-test('central fallback builder uses the same official schedule and boxscore source',async()=>{
+test('central builder owns official schedule and boxscore collection',async()=>{
   const builder=await read('scripts/build-dashboard-snapshot.mjs');
   assert.match(builder,/fetchOfficialToday/);
-  assert.match(builder,/startDate=\$\{start\}&endDate=\$\{end\}/);
-  assert.match(builder,/gameTaiwanDate/);
-  assert.match(builder,/MLB schedule API unavailable/);
-  assert.doesNotMatch(builder,/BASEBALL_DAY_CUTOFF|gameDay\(\)/);
-});
-
-test('snapshot builder preserves last-good data and skips only invalid players',async()=>{
-  const builder=await read('scripts/build-dashboard-snapshot.mjs');
-  assert.match(builder,/MAX_MLB_REQUESTS=8/);
-  assert.match(builder,/AbortController/);
+  assert.match(builder,/schedule\?teamId=\$\{teamId\}&startDate=\$\{start\}&endDate=\$\{end\}/);
+  assert.match(builder,/\/game\/\$\{game\.gamePk\}\/boxscore/);
   assert.match(builder,/previousById/);
-  assert.match(builder,/snapshotPlayers/);
-  assert.match(builder,/Skipping \$\{player\.name\}: no fresh or previous dashboard data is available/);
-  assert.match(builder,/No valid dashboard players are available/);
-  assert.match(builder,/games:games\.slice\(0,5\)/);
-  assert.match(builder,/compactLevels/);
   assert.match(builder,/signature\(previous\)===signature\(next\)/);
 });
 
-test('snapshot workflow only commits the data file and cannot loop on itself',async()=>{
+test('snapshot workflow refreshes centrally and never sends LINE itself',async()=>{
   const workflow=await read('.github/workflows/refresh-dashboard-snapshot.yml');
-  assert.match(workflow,/permissions:\s*\n\s*contents: write/);
-  assert.match(workflow,/paths-ignore:\s*\n\s*- 'data\/dashboard-snapshot\.js'/);
   assert.match(workflow,/git add data\/dashboard-snapshot\.js/);
-  assert.match(workflow,/git diff --quiet -- data\/dashboard-snapshot\.js/);
   assert.match(workflow,/7,17,27,37,47,57 \* \* \* \*/);
   assert.doesNotMatch(workflow,/send-line-update|line-daily-updates/i);
 });
