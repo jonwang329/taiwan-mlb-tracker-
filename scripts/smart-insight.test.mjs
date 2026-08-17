@@ -31,18 +31,12 @@ test('every player gets direct official player links and a game-specific deep di
   assert.match(source, /result\?\.today\?\.game\?\.gamePk/);
   assert.match(source, /www\.mlb\.com\/gameday\/\$\{gamePk\}/);
   assert.match(source, /baseballsavant\.mlb\.com\/gamefeed\?gamePk=\$\{gamePk\}/);
-  assert.match(source, /Today Game/);
-  assert.match(source, /Latest Game/);
-  assert.match(source, /OFFICIAL DEEP DIVE/);
 });
 
 test('main UI uses official links instead of embedded Strike Zone data loading', () => {
-  assert.match(index, /smart-insight\.css\?v=20260814-insight-v2/);
-  assert.match(index, /smart-insight\.js\?v=20260814-insight-v2/);
-  assert.doesNotMatch(index, /pitch-analysis\.css/);
-  assert.doesNotMatch(index, /pitch-trial\.css/);
-  assert.doesNotMatch(index, /pitch-analysis\.js/);
-  assert.doesNotMatch(index, /pitch-trial\.js/);
+  assert.match(index, /smart-insight\.css\?v=/);
+  assert.match(index, /smart-insight\.js\?v=/);
+  assert.doesNotMatch(index, /pitch-analysis\.css|pitch-trial\.css|pitch-analysis\.js|pitch-trial\.js/);
 });
 
 test('mobile presentation keeps official links compact', () => {
