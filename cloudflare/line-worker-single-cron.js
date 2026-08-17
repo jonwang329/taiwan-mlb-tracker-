@@ -1,4 +1,4 @@
-import handler from './line-flex-worker.js';
+import handler from './line-canonical-worker.js';
 
 const SLOT_CRON_BY_TAIWAN_HOUR = new Map([
   ['07', '0 23 * * *'],
