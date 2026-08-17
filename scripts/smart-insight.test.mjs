@@ -38,7 +38,7 @@ test('every player gets direct official player links and a game-specific deep di
 
 test('main UI uses official links instead of embedded Strike Zone data loading', () => {
   assert.match(index, /smart-insight\.css\?v=20260814-insight-v2/);
-  assert.match(index, /smart-insight\.js\?v=20260814-insight-v2/);
+  assert.match(index, /smart-insight\.js\?v=20260817-live-v2/);
   assert.doesNotMatch(index, /pitch-analysis\.css/);
   assert.doesNotMatch(index, /pitch-trial\.css/);
   assert.doesNotMatch(index, /pitch-analysis\.js/);
