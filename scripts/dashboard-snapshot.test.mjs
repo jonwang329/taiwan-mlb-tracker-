@@ -31,8 +31,8 @@ test('browser is a canonical snapshot renderer with explicit freshness',async()=
 test('live browser refresh only follows a canonical gamePk',async()=>{
   const live=await read('live-refresh.js');
   assert.match(live,/knownGameIds/);
+  assert.match(live,/result\?\.today\?\.game\?\.gamePk/);
   assert.match(live,/game\/\$\{gamePk\}\/feed\/live/);
-  assert.match(live,/canonicalGamePk/);
   assert.doesNotMatch(live,/\/schedule\?|teamCandidates|discoverGames/);
 });
 
@@ -40,7 +40,7 @@ test('central builder owns official schedule and boxscore collection',async()=>{
   const builder=await read('scripts/build-dashboard-snapshot.mjs');
   assert.match(builder,/fetchOfficialToday/);
   assert.match(builder,/schedule\?teamId=\$\{teamId\}&startDate=\$\{start\}&endDate=\$\{end\}/);
-  assert.match(builder,/\/game\/\$\{g\.gamePk\}\/boxscore/);
+  assert.match(builder,/\/game\/\$\{game\.gamePk\}\/boxscore/);
   assert.match(builder,/previousById/);
   assert.match(builder,/signature\(previous\)===signature\(next\)/);
 });
