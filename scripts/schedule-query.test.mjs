@@ -6,8 +6,8 @@ const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');
 test('browser live refresh never rediscovers schedules',async()=>{
   const live=await read('live-refresh.js');
   assert.match(live,/knownGameIds/);
+  assert.match(live,/result\?\.today\?\.game\?\.gamePk/);
   assert.match(live,/game\/\$\{gamePk\}\/feed\/live/);
-  assert.match(live,/canonicalGamePk/);
   assert.doesNotMatch(live,/\/schedule\?|sportId=|teamCandidates|discoverGames/);
 });
 
