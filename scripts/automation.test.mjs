@@ -53,8 +53,8 @@ test('12:00 final slot always sends a verified or stale status report',async()=>
 test('canonical builder owns official schedule and boxscore truth',async()=>{
   const builder=await read('scripts/build-dashboard-snapshot.mjs');
   assert.match(builder,/schedule\?teamId=\$\{teamId\}&startDate=\$\{start\}&endDate=\$\{end\}/);
-  assert.match(builder,/\/game\/\$\{g\.gamePk\}\/boxscore/);
-  assert.match(builder,/ID\$\{p\.id\}/);
+  assert.match(builder,/\/game\/\$\{game\.gamePk\}\/boxscore/);
+  assert.match(builder,/ID\$\{player\.id\}/);
   assert.doesNotMatch(builder,/schedule\?sportId=\$\{sportId\|\|1\}&teamId=/);
 });
 
