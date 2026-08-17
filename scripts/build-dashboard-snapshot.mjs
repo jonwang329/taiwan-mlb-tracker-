@@ -96,8 +96,8 @@ async function fetchLevel(player,[sportId,level]){
     return {sportId,level,season:null,games:[],failed:true};
   }
 }
-async function fetchOfficialToday(player,teamIds,level,sportId){
-  const ids=[...new Set(teamIds.filter(Boolean))].slice(0,4);
+async function fetchOfficialToday(player,teamIds,level){
+  const ids=[...new Set(teamIds.filter(Boolean))].slice(0,6);
   if(!ids.length)return null;
   const now=new Date();
   const {start,end}=scheduleQueryWindow(now);
@@ -108,7 +108,10 @@ async function fetchOfficialToday(player,teamIds,level,sportId){
   const seenGames=new Set();
   for(const teamId of ids){
     try{
-      const schedule=await freshJson(`${API}/schedule?sportId=${sportId||1}&teamId=${teamId}&startDate=${start}&endDate=${end}`);
+      // teamId is the authoritative schedule identity. Do not combine it with a
+      // separately inferred sportId: promotions/demotions can otherwise create
+      // an impossible teamId + sportId pair and hide a real MiLB game.
+      const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
       scheduleChecks+=1;
       const games=(schedule.dates||[]).flatMap(date=>date.games||[]).filter(game=>isTaiwanTodayGame(game,now));
       const ordered=[...games].sort((a,b)=>{
@@ -140,9 +143,9 @@ async function loadPlayer(player){
   const games=gamesSorted(levels.flatMap(level=>level.games));
   const latest=games[0]||null;
   const active=levels.find(level=>level.level===latest?.level)||levels.find(level=>level.season)||{};
-  const teamIds=[latest?.team?.id,...games.slice(0,5).map(game=>game.team?.id),person.currentTeam?.id];
+  const teamIds=[latest?.team?.id,...games.slice(0,8).map(game=>game.team?.id),person.currentTeam?.id];
   let officialToday=null;
-  try{officialToday=await fetchOfficialToday(player,teamIds,active.level||latest?.level||'—',active.sportId||1);}
+  try{officialToday=await fetchOfficialToday(player,teamIds,active.level||latest?.level||'—');}
   catch(error){console.warn(`[snapshot] Today schedule lookup failed for ${player.name}: ${error.message}`);}
   const gameLogToday=todayFromGameLogs(player,games);
   const compactLevels=levels.map(({sportId,level,season})=>({sportId,level,season,games:[]}));
