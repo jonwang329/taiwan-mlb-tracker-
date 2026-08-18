@@ -137,8 +137,9 @@
       }
 
       if (confirmed > 0 && lastUpdate) {
-        lastUpdate.textContent = `MLB Live 已確認 · ${formatTime(Date.now())}`;
-        lastUpdate.dataset.statVerifiedAt = String(Date.now());
+        const now = Date.now();
+        lastUpdate.textContent = `MLB 資料刷新 · ${formatTime(now)}`;
+        lastUpdate.dataset.statVerifiedAt = String(now);
       }
       window.dispatchEvent(new CustomEvent('tracker:authoritative-live-refresh', { detail: { confirmed, games: feeds.size } }));
     } catch (error) {
@@ -146,6 +147,18 @@
     } finally {
       running = false;
     }
+  }
+
+  if (lastUpdate) {
+    const observer = new MutationObserver(() => {
+      const text = lastUpdate.textContent || '';
+      if (text.startsWith('已檢查今日賽程')) {
+        const verified = Number(lastUpdate.dataset.statVerifiedAt || 0);
+        if (verified) lastUpdate.textContent = `MLB 資料刷新 · ${formatTime(verified)}`;
+        else lastUpdate.textContent = `MLB 賽程檢查 · ${formatTime(Date.now())}（球員數據未確認）`;
+      }
+    });
+    observer.observe(lastUpdate, { childList: true, characterData: true, subtree: true });
   }
 
   refreshAuthoritative();
