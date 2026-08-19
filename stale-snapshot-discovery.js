@@ -3,6 +3,8 @@
   let timer = null;
   let running = false;
 
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+
   function currentPairs() {
     if (typeof players !== 'undefined' && typeof lastResults !== 'undefined' && Array.isArray(players) && Array.isArray(lastResults)) {
       return players.map((player, index) => ({ player, result: lastResults[index] })).filter(({ result }) => result);
@@ -69,9 +71,9 @@
         }
       }
 
-      if (found > 0 && typeof paint === 'function' && typeof lastResults !== 'undefined' && Array.isArray(lastResults)) {
+      if (force && typeof paint === 'function' && typeof lastResults !== 'undefined' && Array.isArray(lastResults)) {
         const now = Date.now();
-        paint(lastResults, `MLB 官方資料已強制更新 · ${formatTime(now)}`);
+        paint(lastResults, found > 0 ? `MLB 官方資料已強制更新 · ${formatTime(now)}` : `MLB 官方資料已重新確認 · ${formatTime(now)}`);
         if (typeof persistSnapshot === 'function') persistSnapshot(lastResults, now);
       }
 
@@ -85,8 +87,10 @@
   window.forceTodayGameDiscovery = () => discoverTodayGames({ force: true });
 
   const refreshButton = document.querySelector('#refresh-btn');
-  refreshButton?.addEventListener('click', () => {
-    discoverTodayGames({ force: true }).catch(error => console.warn('Manual today-game discovery failed', error));
+  refreshButton?.addEventListener('click', async () => {
+    const started = Date.now();
+    while (refreshButton.disabled && Date.now() - started < 20000) await pause(100);
+    await discoverTodayGames({ force: true });
   });
 
   discoverTodayGames();
