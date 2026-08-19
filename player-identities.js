@@ -3,7 +3,7 @@
     {id:678906,zh:'鄧愷威',en:'Kai-Wei Teng'},
     {id:691907,zh:'鄭宗哲',en:'Tsung-Che Cheng'},
     {zh:'劉致榮',en:'Chih-Jung Liu'},
-    {zh:'陳柏毓',en:'Po-Yu Chen'},
+    {id:696040,zh:'陳柏毓',en:'Po-Yu Chen'},
     {id:701678,zh:'李灝宇',en:'Hao-Yu Lee'},
     {id:800018,zh:'莊陳仲敖',en:'Chen Zhong-Ao Zhuang'},
     {id:801179,zh:'林昱珉',en:'Yu-Min Lin'},
