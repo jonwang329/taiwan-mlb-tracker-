@@ -62,9 +62,22 @@ jobs:
           fi
           test -n "$namespace_id" && test "$namespace_id" != "null" || { echo "::error::Could not resolve KV namespace"; exit 1; }
 
-          if ! npx wrangler kv key get --namespace-id "$namespace_id" players --text --remote >/tmp/current-players.json 2>/dev/null || [ ! -s /tmp/current-players.json ]; then
-            npx wrangler kv key put --namespace-id "$namespace_id" players --path tracked-players.json --remote
+          # Production KV is the editable watchlist. Preserve everything already there,
+          # but merge in any baseline player IDs added to tracked-players.json.
+          if ! npx wrangler kv key get --namespace-id "$namespace_id" players --text --remote >/tmp/current-players.json 2>/dev/null || ! jq -e 'type == "array"' /tmp/current-players.json >/dev/null 2>&1; then
+            cp tracked-players.json /tmp/merged-players.json
+          else
+            jq -s '
+              (.[0] // []) as $current |
+              (.[1] // []) as $baseline |
+              reduce $baseline[] as $p ($current;
+                if any(.[]; (.id|tonumber) == ($p.id|tonumber)) then . else . + [$p] end
+              )
+            ' /tmp/current-players.json tracked-players.json >/tmp/merged-players.json
           fi
+          jq -e 'type == "array" and length > 0' /tmp/merged-players.json >/dev/null
+          npx wrangler kv key put --namespace-id "$namespace_id" players --path /tmp/merged-players.json --remote
+          echo "Production watchlist merged with tracked baseline: $(jq length /tmp/merged-players.json) players"
 
           cat > wrangler.observation.toml <<EOF
           name = "taiwan-mlb-observation-list"
