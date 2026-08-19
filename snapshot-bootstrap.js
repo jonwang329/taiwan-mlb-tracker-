@@ -8,15 +8,8 @@
   const central=normalizeSnapshot(window.CENTRAL_DASHBOARD_SNAPSHOT);
   if(central&&central!==window.CENTRAL_DASHBOARD_SNAPSHOT)window.CENTRAL_DASHBOARD_SNAPSHOT=central;
   if(!central||!Array.isArray(central.players)||!Array.isArray(central.results)||central.players.length!==central.results.length||!central.players.length)return;
-  try{
-    const rawLocal=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');
-    const local=normalizeSnapshot(rawLocal);
-    if(local&&local!==rawLocal)localStorage.setItem(CACHE_KEY,JSON.stringify(local));
-    const centralSaved=Number(central.savedAt||0);
-    const localSaved=Number(local?.savedAt||0);
-    if(local&&Array.isArray(local.players)&&Array.isArray(local.results)&&local.players.length===local.results.length&&localSaved>=centralSaved)return;
-    localStorage.setItem(CACHE_KEY,JSON.stringify(central));
-  }catch(error){
-    console.warn('Could not seed local dashboard cache from central snapshot',error);
-  }
+  // MLB/MiLB central snapshot is the cold-start truth. Never let a browser runtime
+  // cache with a newer timestamp hide corrected official data on the next page load.
+  try{localStorage.setItem(CACHE_KEY,JSON.stringify(central));}
+  catch(error){console.warn('Could not seed browser from central MLB snapshot',error);}
 })();
