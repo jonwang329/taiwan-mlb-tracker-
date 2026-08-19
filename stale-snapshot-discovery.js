@@ -30,6 +30,12 @@
     }).format(new Date());
   }
 
+  function formatTime(ts) {
+    return new Intl.DateTimeFormat('zh-TW', {
+      timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false
+    }).format(new Date(ts));
+  }
+
   function needsDiscovery(result) {
     const today = result?.today;
     if (!today?.game?.gamePk) return true;
@@ -61,6 +67,12 @@
         } catch (error) {
           console.warn('Today game discovery failed', player.name, error);
         }
+      }
+
+      if (found > 0 && typeof paint === 'function' && typeof lastResults !== 'undefined' && Array.isArray(lastResults)) {
+        const now = Date.now();
+        paint(lastResults, `MLB 官方資料已強制更新 · ${formatTime(now)}`);
+        if (typeof persistSnapshot === 'function') persistSnapshot(lastResults, now);
       }
 
       window.dispatchEvent(new CustomEvent('tracker:today-game-discovery', { detail: { found, checked, force } }));
