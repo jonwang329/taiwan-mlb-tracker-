@@ -1,20 +1,25 @@
-name: LINE manual fallback (GitHub)
+name: LINE daily tracker updates
 
 on:
+  schedule:
+    - cron: '0 23 * * *' # 07:00 Asia/Taipei
+    - cron: '0 0 * * *'  # 08:00 Asia/Taipei
+    - cron: '0 1 * * *'  # 09:00 Asia/Taipei
+    - cron: '0 4 * * *'  # 12:00 Asia/Taipei
   workflow_dispatch:
     inputs:
-      mode:
-        description: Manual fallback report type
+      slot:
+        description: Manual test slot / format
         required: true
-        default: final
+        default: '08:00'
         type: choice
-        options: [morning, changes, final]
+        options: ['07:00', '08:00', '09:00', '12:00']
 
 permissions:
   contents: read
 
 concurrency:
-  group: line-manual-fallback
+  group: line-daily-${{ github.event.schedule || inputs.slot || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -31,7 +36,7 @@ jobs:
             echo "OBSERVATION_API_URL=$api_url" >> "$GITHUB_ENV"
             echo "Observation API configured from observation-config.js"
           else
-            echo "Observation API is not deployed yet; tracked-players.json fallback will be used"
+            echo "Observation API is not deployed; tracked-players.json is used only as the player-name list"
           fi
 
       - name: Verify LINE configuration
@@ -43,9 +48,31 @@ jobs:
           [[ "$HAS_TOKEN" == "true" ]] || { echo "::error::LINE_CHANNEL_ACCESS_TOKEN is not configured"; exit 1; }
           [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is not configured"; exit 1; }
 
-      - name: Run manual GitHub fallback sender
+      - name: Resolve Taiwan notification slot
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          MANUAL_SLOT: ${{ inputs.slot }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            slot="$MANUAL_SLOT"
+            echo "LINE_TEST_ARG=--test" >> "$GITHUB_ENV"
+          else
+            case "$SCHEDULE" in
+              '0 23 * * *') slot='07:00' ;;
+              '0 0 * * *')  slot='08:00' ;;
+              '0 1 * * *')  slot='09:00' ;;
+              '0 4 * * *')  slot='12:00' ;;
+              *) echo "::error::Unknown schedule: $SCHEDULE"; exit 1 ;;
+            esac
+            echo "LINE_TEST_ARG=" >> "$GITHUB_ENV"
+          fi
+          echo "NOTIFICATION_SLOT=$slot" >> "$GITHUB_ENV"
+          echo "Resolved Taiwan slot: $slot"
+
+      - name: Fetch official MLB data and send one LINE message
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_DESTINATION_ID: ${{ secrets.LINE_DESTINATION_ID }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: node scripts/send-line-update.mjs --mode=${{ inputs.mode }} --test
+        run: node scripts/send-line-update.mjs --slot="$NOTIFICATION_SLOT" $LINE_TEST_ARG
