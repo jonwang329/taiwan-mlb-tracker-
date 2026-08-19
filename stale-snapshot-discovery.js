@@ -24,41 +24,58 @@
     return result?.today?.level || result?.latest?.level || result?.games?.[0]?.level || '—';
   }
 
+  function taipeiToday() {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+  }
+
   function needsDiscovery(result) {
     const today = result?.today;
     if (!today?.game?.gamePk) return true;
-    const gameDate = String(today.date || '');
-    const now = new Date();
-    const taipei = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
-    }).format(now);
-    return gameDate !== taipei;
+    return String(today.date || '') !== taipeiToday();
   }
 
-  async function discoverTodayGames() {
-    if (running || document.hidden || typeof window.fetchOfficialToday !== 'function') return;
+  async function discoverTodayGames({ force = false } = {}) {
+    if (running || document.hidden || typeof window.fetchOfficialToday !== 'function') return { found: 0, checked: 0 };
     running = true;
+    let found = 0;
+    let checked = 0;
     try {
       const pairs = currentPairs();
-      const targets = pairs.filter(({ result }) => needsDiscovery(result));
-      if (!targets.length) return;
+      const targets = force ? pairs : pairs.filter(({ result }) => needsDiscovery(result));
+      if (!targets.length) return { found, checked };
 
       for (const { player, result } of targets) {
         const teamIds = teamIdsFor(result);
         if (!teamIds.length) continue;
+        checked += 1;
         try {
           const today = await window.fetchOfficialToday(player, teamIds, levelFor(result));
-          if (today?.game?.gamePk) result.today = today;
+          if (today?.game?.gamePk) {
+            result.today = today;
+            found += 1;
+          } else if (force && String(result?.today?.date || '') !== taipeiToday()) {
+            result.today = null;
+          }
         } catch (error) {
           console.warn('Today game discovery failed', player.name, error);
         }
       }
 
-      window.dispatchEvent(new CustomEvent('tracker:today-game-discovery'));
+      window.dispatchEvent(new CustomEvent('tracker:today-game-discovery', { detail: { found, checked, force } }));
+      return { found, checked };
     } finally {
       running = false;
     }
   }
+
+  window.forceTodayGameDiscovery = () => discoverTodayGames({ force: true });
+
+  const refreshButton = document.querySelector('#refresh-btn');
+  refreshButton?.addEventListener('click', () => {
+    discoverTodayGames({ force: true }).catch(error => console.warn('Manual today-game discovery failed', error));
+  });
 
   discoverTodayGames();
   timer = setInterval(discoverTodayGames, DISCOVERY_MS);
