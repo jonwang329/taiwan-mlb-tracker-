@@ -6,7 +6,7 @@ on:
     paths-ignore:
       - 'data/dashboard-snapshot.js'
   schedule:
-    - cron: '2,17,32,47 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
