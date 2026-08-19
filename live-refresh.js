@@ -6,9 +6,9 @@
 
   const API = 'https://statsapi.mlb.com/api/v1';
   const LIVE_API = 'https://statsapi.mlb.com/api/v1.1';
-  const LIVE_MS = 90 * 1000;
-  const DISCOVERY_MS = 5 * 60 * 1000;
-  const NEAR_GAME_MS = 3 * 60 * 1000;
+  const LIVE_MS = 60 * 1000;
+  const DISCOVERY_MS = 3 * 60 * 1000;
+  const NEAR_GAME_MS = 2 * 60 * 1000;
   const NEAR_WINDOW_MS = 30 * 60 * 1000;
   let refreshing = false;
   let discovering = false;
@@ -182,11 +182,12 @@
     return refreshFeeds(ids, { quiet }).then(() => true);
   }
 
-  function teamCandidates() {
+  function teamCandidates(extraTeamIds = new Map()) {
     const candidates = [];
     for (const pair of currentPairs()) {
       const { player, result } = pair;
       const teamIds = [
+        extraTeamIds.get(Number(player.id)),
         result.today?.team?.id,
         result.latest?.team?.id,
         ...(Array.isArray(result.games) ? result.games.slice(0, 5).map(game => game?.team?.id) : [])
@@ -196,25 +197,40 @@
     return candidates;
   }
 
-  async function discoverGames({ quiet = true } = {}) {
+  async function fetchCurrentTeams() {
+    const pairs = currentPairs();
+    const settled = await Promise.allSettled(pairs.map(async ({ player }) => {
+      const person = await fetchJson(`${API}/people/${player.id}?hydrate=currentTeam`);
+      return [Number(player.id), Number(person.people?.[0]?.currentTeam?.id || 0)];
+    }));
+    const map = new Map();
+    for (const item of settled) {
+      if (item.status !== 'fulfilled') continue;
+      const [playerId, teamId] = item.value;
+      if (playerId && teamId) map.set(playerId, teamId);
+    }
+    return map;
+  }
+
+  async function discoverGames({ quiet = true, refreshTeams = false } = {}) {
     if (discovering || document.hidden) return { nearGame: false, foundLive: false };
     discovering = true;
     try {
       const now = new Date();
       const { start, end } = scheduleQueryWindow(now);
-      const candidates = teamCandidates();
-      const unique = new Map();
-      for (const item of candidates) unique.set(String(item.teamId), item);
-      const settled = await Promise.allSettled([...unique.values()].map(async item => {
-        const json = await fetchJson(`${API}/schedule?teamId=${item.teamId}&startDate=${start}&endDate=${end}`);
-        return { item, games: (json.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now)) };
+      const extraTeamIds = refreshTeams ? await fetchCurrentTeams() : new Map();
+      const candidates = teamCandidates(extraTeamIds);
+      const uniqueTeams = [...new Set(candidates.map(item => Number(item.teamId)).filter(Boolean))];
+      const settled = await Promise.allSettled(uniqueTeams.map(async teamId => {
+        const json = await fetchJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
+        return (json.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now));
       }));
 
       const liveIds = new Set();
       let nearGame = false;
       for (const entry of settled) {
         if (entry.status !== 'fulfilled') continue;
-        for (const game of entry.value.games) {
+        for (const game of entry.value) {
           const state = game.status?.abstractGameState;
           const startAt = new Date(game.gameDate || 0).getTime();
           if (startAt && Math.abs(startAt - now.getTime()) <= NEAR_WINDOW_MS) nearGame = true;
@@ -223,7 +239,7 @@
       }
 
       if (liveIds.size) await refreshFeeds([...liveIds], { quiet });
-      if (!quiet && !liveIds.size && lastUpdate) lastUpdate.textContent = `已檢查今日賽程 · ${formatTime(Date.now())}`;
+      if (!quiet && !liveIds.size && lastUpdate) lastUpdate.textContent = `MLB 官方賽程已確認 · ${formatTime(Date.now())}`;
       return { nearGame, foundLive: liveIds.size > 0 };
     } catch (error) {
       console.warn('Game discovery failed', error);
@@ -258,9 +274,9 @@
     refreshing = true;
     btn.disabled = true;
     btn.setAttribute('aria-busy', 'true');
-    if (lastUpdate) lastUpdate.textContent = '正在檢查今日賽程與即時比賽…';
+    if (lastUpdate) lastUpdate.textContent = '正在直接向 MLB 確認最新資料…';
     try {
-      const discovery = await discoverGames({ quiet: false });
+      const discovery = await discoverGames({ quiet: false, refreshTeams: true });
       if (!discovery.foundLive) await refreshKnownGames({ quiet: false }).catch(() => false);
     } finally {
       refreshing = false;
@@ -274,7 +290,7 @@
   });
 
   startLiveLoop();
-  scheduleDiscovery(30 * 1000);
+  scheduleDiscovery(15 * 1000);
   window.addEventListener('pagehide', () => {
     clearInterval(liveTimer);
     clearTimeout(discoveryTimer);
