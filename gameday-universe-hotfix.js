@@ -101,7 +101,6 @@
     if (state === 'Live') return true;
     if (/in progress|warmup|delayed|manager challenge|review/.test(detailed)) return true;
     if (startAt && age >= -5 * 60_000 && age <= 6 * 60 * 60_000 && state !== 'Preview') return true;
-    // Some MiLB schedules lag in status; once scheduled start has passed, allow a short fallback window.
     if (startAt && age >= 0 && age <= 4 * 60 * 60_000) return true;
     return false;
   }
@@ -162,11 +161,11 @@
     } finally {
       running = false;
       clearTimeout(timer);
-      timer = setTimeout(scan, activeGames ? 45_000 : 90_000);
+      timer = setTimeout(scan, activeGames ? 20_000 : 60_000);
     }
   }
 
-  document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(scan, 750));
+  document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(scan, 250));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scan(); });
   scan();
 })();
