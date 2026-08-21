@@ -5,6 +5,8 @@ const slotArg = process.argv.find(value => value.startsWith("--slot="));
 const slot = slotArg?.slice("--slot=".length) || process.env.NOTIFICATION_SLOT || "08:00";
 const dryRun = args.has("--dry-run");
 const isTest = args.has("--test");
+// Manual test does not modify the production snapshot. Cloudflare remains the
+// only production scheduler and the only sender of scheduled Flex messages.
 const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const destination = process.env.LINE_DESTINATION_ID || process.env.LINE_USER_ID;
 

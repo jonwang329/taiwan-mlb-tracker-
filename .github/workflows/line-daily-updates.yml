@@ -1,11 +1,6 @@
 name: LINE daily tracker updates
 
 on:
-  schedule:
-    - cron: '0 23 * * *' # 07:00 Asia/Taipei
-    - cron: '0 0 * * *'  # 08:00 Asia/Taipei
-    - cron: '0 1 * * *'  # 09:00 Asia/Taipei
-    - cron: '0 4 * * *'  # 12:00 Asia/Taipei
   workflow_dispatch:
     inputs:
       slot:
@@ -19,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: line-daily-${{ github.event.schedule || inputs.slot || github.run_id }}
+  group: line-manual-fallback-${{ inputs.slot || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -49,26 +44,11 @@ jobs:
           [[ "$HAS_DESTINATION" == "true" ]] || { echo "::error::LINE_DESTINATION_ID or LINE_USER_ID is not configured"; exit 1; }
 
       - name: Resolve Taiwan notification slot
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          SCHEDULE: ${{ github.event.schedule }}
-          MANUAL_SLOT: ${{ inputs.slot }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            slot="$MANUAL_SLOT"
-            echo "LINE_TEST_ARG=--test" >> "$GITHUB_ENV"
-          else
-            case "$SCHEDULE" in
-              '0 23 * * *') slot='07:00' ;;
-              '0 0 * * *')  slot='08:00' ;;
-              '0 1 * * *')  slot='09:00' ;;
-              '0 4 * * *')  slot='12:00' ;;
-              *) echo "::error::Unknown schedule: $SCHEDULE"; exit 1 ;;
-            esac
-            echo "LINE_TEST_ARG=" >> "$GITHUB_ENV"
-          fi
+          slot="${{ inputs.slot }}"
+          echo "LINE_TEST_ARG=--test" >> "$GITHUB_ENV"
           echo "NOTIFICATION_SLOT=$slot" >> "$GITHUB_ENV"
-          echo "Resolved Taiwan slot: $slot"
+          echo "Resolved manual fallback slot: $slot"
 
       - name: Fetch official MLB data and send one LINE message
         env:
