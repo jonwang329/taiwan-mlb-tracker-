@@ -166,6 +166,15 @@ jobs:
           health=$(curl -fsS "$URL/health")
           echo "$health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true and .format == "flex-v1"'
           echo "Cloudflare LINE Flex worker verified; no LINE test message sent during deployment"
+      - name: Send one explicitly authorized LINE Flex test
+        if: contains(github.event.head_commit.message, '[line-test-once]')
+        env:
+          URL: ${{ steps.workers.outputs.line_url }}
+          DEPLOY_TEST_TOKEN: ${{ github.token }}
+        run: |
+          result=$(curl -fsS -X POST "$URL/internal/line-test" -H "Authorization: Bearer $DEPLOY_TEST_TOKEN")
+          echo "$result" | jq -e '.ok == true and .lineStatus >= 200 and .lineStatus < 300'
+          echo "One user-authorized LINE Flex test sent"
       - name: Configure dashboard API URL
         env:
           URL: ${{ steps.workers.outputs.observation_url }}
