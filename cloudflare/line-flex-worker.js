@@ -111,27 +111,24 @@ async function loadPeople(players) {
 async function collectSnapshot(env, now = new Date()) {
   const players = await readPlayers(env);
   const people = await loadPeople(players);
-  const teamInfoCache = new Map();
+  const teamIds = [...new Set([...people.values()].map(person => Number(person.currentTeam?.id)).filter(Boolean))];
+  const teamsData = teamIds.length
+    ? await mlbJson(`${MLB_API}/teams?teamId=${teamIds.join(',')}`)
+    : { teams: [] };
+  const teams = new Map((teamsData.teams || []).map(team => [Number(team.id), team]));
   const scheduleCache = new Map();
   const boxCache = new Map();
   const seasonCache = new Map();
   const { start, end } = scheduleQueryWindow(now);
   const reportDate = taiwanDate(now);
 
-  async function teamInfo(teamId) {
-    if (!teamInfoCache.has(teamId)) {
-      teamInfoCache.set(teamId, mlbJson(`${MLB_API}/teams/${teamId}`).then(data => data.teams?.[0] || null));
-    }
-    return teamInfoCache.get(teamId);
-  }
-
   async function gamesForTeam(teamId, sportId) {
-    const key = `${teamId}:${sportId}`;
-    if (!scheduleCache.has(key)) {
-      scheduleCache.set(key, mlbJson(`${MLB_API}/schedule?sportId=${sportId}&teamId=${teamId}&startDate=${start}&endDate=${end}&hydrate=probablePitcher`)
+    if (!scheduleCache.has(sportId)) {
+      scheduleCache.set(sportId, mlbJson(`${MLB_API}/schedule?sportId=${sportId}&startDate=${start}&endDate=${end}&hydrate=probablePitcher`)
         .then(data => (data.dates || []).flatMap(item => item.games || []).filter(game => gameTaiwanDate(game) === reportDate)));
     }
-    return scheduleCache.get(key);
+    const games = await scheduleCache.get(sportId);
+    return games.filter(game => Number(game.teams?.home?.team?.id) === Number(teamId) || Number(game.teams?.away?.team?.id) === Number(teamId));
   }
 
   async function boxscore(gamePk) {
@@ -154,7 +151,7 @@ async function collectSnapshot(env, now = new Date()) {
     const teamName = person.currentTeam?.name || player.org || 'MLB / MiLB';
     if (!teamId) return { ...player, team: teamName, played: false, scheduled: false, gameDate: '', gameTime: '', gameStatus: 'NO GAME', performance: 'Did not play', season: '—', level: '—', liveSource: false };
 
-    const info = await teamInfo(teamId);
+    const info = teams.get(Number(teamId));
     const sportId = Number(info?.sport?.id || 1);
     const level = info?.sport?.name || 'MLB / MiLB';
     const games = await gamesForTeam(teamId, sportId);
