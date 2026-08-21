@@ -1,9 +1,7 @@
 import handler from './line-flex-worker.js';
 
-// LINE and the dashboard must discover games from the same MLB truth.
-// A team's MLB schedule identity is teamId. sportId is useful for stats/level
-// metadata, but combining an independently inferred sportId with teamId can
-// hide the real game immediately after a promotion/demotion.
+// Cloudflare is the only production LINE scheduler. The imported Flex worker
+// resolves each current team's official sportId before querying MiLB schedules.
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
 const DISPLAY_NAME = new Map([
@@ -126,14 +124,6 @@ function polishFlexMessage(message) {
 
 globalThis.fetch = (input, init) => {
   const rawUrl = typeof input === 'string' ? input : input?.url;
-
-  if (rawUrl && rawUrl.startsWith('https://statsapi.mlb.com/api/v1/schedule?')) {
-    const url = new URL(rawUrl);
-    if (url.searchParams.has('teamId') && url.searchParams.has('sportId')) {
-      url.searchParams.delete('sportId');
-      return nativeFetch(url.toString(), init);
-    }
-  }
 
   if (rawUrl === 'https://api.line.me/v2/bot/message/push' && typeof init?.body === 'string') {
     try {
