@@ -1,5 +1,7 @@
 (() => {
   const originalFetch = window.fetch.bind(window);
+  const MLB_ORIGIN = 'https://statsapi.mlb.com';
+  const MLB_PROXY = 'https://taiwan-mlb-pitch-proxy.jonwang329.workers.dev/mlb/api';
   const MAX_MLB_REQUESTS = 8;
   let active = 0;
   const waiting = [];
@@ -22,13 +24,15 @@
 
   window.fetch = async (input, init = {}) => {
     if (!isMlb(input)) return originalFetch(input, init);
+    const directUrl = String(typeof input === 'string' ? input : input?.url || '');
+    const proxiedUrl = `${MLB_PROXY}${directUrl.slice(MLB_ORIGIN.length + 4)}`;
     let lastError;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       await acquireMlbSlot();
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 10000);
       try {
-        const response = await originalFetch(input, { ...init, signal: controller.signal });
+        const response = await originalFetch(proxiedUrl, { ...init, signal: controller.signal });
         if (response.ok || (response.status !== 429 && response.status < 500)) return response;
         lastError = new Error(`MLB API ${response.status}`);
       } catch (error) {
