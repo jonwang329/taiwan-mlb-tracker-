@@ -95,6 +95,7 @@ async function fetchOfficialToday(p,teamIds,level,sportId){
 async function fetchLevel(p,[sportId,level]){const base=`${API}/people/${p.id}/stats?group=${p.group}&season=${new Date().getFullYear()}&sportId=${sportId}`;try{const [sj,gj]=await Promise.all([stableJson(`${base}&stats=season`),freshJson(`${base}&stats=gameLog`)]);return {sportId,level,season:sj.stats?.[0]?.splits?.[0]?.stat||null,games:(gj.stats?.[0]?.splits||[]).map(g=>({...g,level}))};}catch(error){console.warn('Stats unavailable',p.name,level,error);return {sportId,level,season:null,games:[],failed:true}}}
 async function load(p){const [levels,person]=await Promise.all([Promise.all(LEVELS.map(l=>fetchLevel(p,l))),fetchPerson(p)]),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{},teamIds=[latest?.team?.id,...games.slice(0,5).map(g=>g.team?.id),person.currentTeam?.id],officialToday=await fetchOfficialToday(p,teamIds,active.level||latest?.level||'—',active.sportId||1);return {levels,games,latest,today:officialToday,season:active.season||{}};}
 function meaningful(r){return Boolean(r?.today||r?.latest||r?.games?.length||r?.levels?.some(x=>x.season));}
+function confirmedAppearance(p,today){return Boolean(today?.onGame||liveAppearance(p,today?.stat||{}));}
 function updateMetrics(results){const played=results.map((r,i)=>[r,players[i]]).filter(([r])=>r.today),hits=played.reduce((a,[r,p])=>a+(p.group==='hitting'?num(r.today.stat?.hits):0),0),ks=played.reduce((a,[r,p])=>a+(p.group==='pitching'?num(r.today.stat?.strikeOuts):0),0),hot=played.filter(([r,p])=>p.group==='hitting'?num(r.today.stat?.hits)>1||num(r.today.stat?.homeRuns):num(r.today.stat?.strikeOuts)>=4);document.querySelector('#player-count').textContent=players.length;document.querySelector('#today-count').textContent=played.length;document.querySelector('#highlight-count').textContent=hot.length;document.querySelector('#daily-total').textContent=`${hits} / ${ks}`;}
 function snapshotSignature(results){return JSON.stringify({players:players.map(p=>[p.id,p.name,p.org,p.group]),results:results.map(r=>({today:r.today,latest:r.latest,season:r.season,games:(r.games||[]).slice(0,5)}))});}
 function persistSnapshot(results,savedAt=Date.now()){lastPlayers=structuredClone(players);lastResults=structuredClone(results);lastSignature=snapshotSignature(results);lastSuccessAt=savedAt;try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt,players:lastPlayers,results:lastResults}))}catch(error){console.warn('Could not persist last-good snapshot',error)}}
@@ -110,9 +111,18 @@ async function collectResults(){
   }
   let freshCount=0,failedCount=0;
   const merged=fresh.map((entry,i)=>{
-    if(!entry.failed&&meaningful(entry.result)){freshCount+=1;return entry.result}
+    const previous=previousById.get(Number(players[i].id));
+    if(!entry.failed&&meaningful(entry.result)){
+      freshCount+=1;
+      // Gameday feeds update before MiLB game logs. During the same Taiwan day,
+      // a slower profile refresh must never erase an already confirmed appearance.
+      if(!entry.result.today&&previous?.today&&twToday(new Date(lastSuccessAt||Date.now()))===twToday()&&confirmedAppearance(players[i],previous.today)){
+        return {...entry.result,today:previous.today};
+      }
+      return entry.result;
+    }
     if(entry.failed)failedCount+=1;
-    return previousById.get(Number(players[i].id))||entry.result||{levels:[],games:[],latest:null,today:null,season:{}};
+    return previous||entry.result||{levels:[],games:[],latest:null,today:null,season:{}};
   });
   if(!freshCount&&lastResults.length)throw new Error('MLB / MiLB API 暫時無法更新');
   return {results:merged,failedCount};
