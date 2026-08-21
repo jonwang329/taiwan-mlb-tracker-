@@ -40,7 +40,22 @@ export default {
   async fetch(request){
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:cors(request)});
     const url=new URL(request.url);
-    if(request.method==='GET'&&url.pathname==='/health')return json(request,{ok:true,source:'mlb-stats-api',mode:'pitch-proxy-v2'});
+    if(request.method==='GET'&&url.pathname==='/health')return json(request,{ok:true,source:'mlb-stats-api',mode:'mlb-browser-proxy-v3'});
+
+    // Browser-safe passthrough for the official Stats API. The path is anchored
+    // below /api/v1 or /api/v1.1, so this cannot be used as an open proxy.
+    const apiMatch=url.pathname.match(/^\/mlb\/api\/(v1(?:\.1)?\/.+)$/);
+    if(request.method==='GET'&&apiMatch){
+      try{
+        const upstream=new URL(`/api/${apiMatch[1]}`,MLB_API);
+        upstream.search=url.search;
+        const result=await mlbFetch(upstream.toString());
+        if(result.ok)return json(request,result.data);
+        return json(request,{error:'MLB Stats API unavailable',status:result.status},502);
+      }catch(error){
+        return json(request,{error:'MLB Stats API unavailable',detail:String(error?.message||error)},502);
+      }
+    }
 
     const match=url.pathname.match(/^\/mlb\/playbyplay\/(\d+)$/);
     if(request.method==='GET'&&match){
