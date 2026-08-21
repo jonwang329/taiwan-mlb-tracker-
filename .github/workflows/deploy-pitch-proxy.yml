@@ -48,12 +48,16 @@ jobs:
           health=""
           for attempt in $(seq 1 15); do
             health=$(curl -fsS "$URL/health" || true)
-            if echo "$health" | jq -e '.ok == true and .mode == "pitch-proxy-v1"' >/dev/null 2>&1; then
+            if echo "$health" | jq -e '.ok == true and .mode == "mlb-browser-proxy-v3"' >/dev/null 2>&1; then
               break
             fi
             sleep 2
           done
-          echo "$health" | jq -e '.ok == true and .mode == "pitch-proxy-v1"'
+          echo "$health" | jq -e '.ok == true and .mode == "mlb-browser-proxy-v3"'
+
+          schedule=$(curl -fsS "$URL/mlb/api/v1/schedule?sportId=11&date=2026-08-20" \
+            -H 'Origin: https://jonwang329.github.io')
+          echo "$schedule" | jq -e '.dates | type == "array"'
 
           preflight=$(curl -si -X OPTIONS "$URL/mlb/playbyplay/824238" \
             -H 'Origin: https://jonwang329.github.io' \
