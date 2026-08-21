@@ -93,11 +93,12 @@
     }
   }
 
-  function shouldScanGame(game, now) {
+  function shouldScanGame(game, now, force = false) {
     const state = game?.status?.abstractGameState;
     const detailed = String(game?.status?.detailedState || '').toLowerCase();
     const startAt = new Date(game?.gameDate || 0).getTime();
     const age = now.getTime() - startAt;
+    if (force && state !== 'Preview') return true;
     if (state === 'Live') return true;
     if (/in progress|warmup|delayed|manager challenge|review/.test(detailed)) return true;
     if (startAt && age >= -5 * 60_000 && age <= 6 * 60 * 60_000 && state !== 'Preview') return true;
@@ -105,8 +106,8 @@
     return false;
   }
 
-  async function scan() {
-    if (running || document.hidden) return;
+  async function scan({ force = false } = {}) {
+    if (running || (document.hidden && !force)) return { skipped: true };
     running = true;
     let activeGames = 0;
     try {
@@ -125,7 +126,7 @@
       for (const item of schedules) {
         if (item.status !== 'fulfilled') continue;
         for (const game of item.value) {
-          if (game?.gamePk && shouldScanGame(game, now)) games.set(Number(game.gamePk), game);
+          if (game?.gamePk && shouldScanGame(game, now, force)) games.set(Number(game.gamePk), game);
         }
       }
       activeGames = games.size;
@@ -156,16 +157,19 @@
         if (lastUpdate) lastUpdate.textContent = `Gameday 全層級 LIVE 已確認 · ${new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(now)}`;
       }
       window.dispatchEvent(new CustomEvent('tracker:gameday-universe', { detail: { games: games.size, matched } }));
+      return { games: games.size, matched };
     } catch (error) {
       console.warn('Sport-wide Gameday scan failed', error);
+      return { games: 0, matched: 0, error: error.message };
     } finally {
       running = false;
       clearTimeout(timer);
-      timer = setTimeout(scan, activeGames ? 20_000 : 60_000);
+      timer = setTimeout(() => scan(), activeGames ? 20_000 : 60_000);
     }
   }
 
-  document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(scan, 250));
+  window.TaiwanMlbUniverseScan = scan;
+  document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(() => scan({ force: true }), 250));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scan(); });
   scan();
 })();
