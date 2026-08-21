@@ -269,7 +269,6 @@
 
   btn.addEventListener('click', async event => {
     event.preventDefault();
-    event.stopImmediatePropagation();
     if (refreshing) return;
     refreshing = true;
     btn.disabled = true;
@@ -278,6 +277,12 @@
     try {
       const discovery = await discoverGames({ quiet: false, refreshTeams: true });
       if (!discovery.foundLive) await refreshKnownGames({ quiet: false }).catch(() => false);
+      // Team metadata can lag immediately after a promotion or reassignment.
+      // The sport-wide scan is the authoritative fallback because it finds the
+      // tracked player by MLB ID in every active MLB/MiLB Gameday feed.
+      if (typeof window.TaiwanMlbUniverseScan === 'function') {
+        await window.TaiwanMlbUniverseScan({ force: true });
+      }
     } finally {
       refreshing = false;
       btn.disabled = false;
