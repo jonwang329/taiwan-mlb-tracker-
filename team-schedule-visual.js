@@ -2,7 +2,8 @@
   function apply(node) {
     const text = String(node.textContent || '').trim();
     if (/^球隊(?:今日)?有賽/.test(text)) {
-      node.textContent = text.replace(/^球隊今日有賽\s*·?\s*/, '球隊有賽 ').replace(/^球隊有賽\s*·?\s*/, '球隊有賽 ');
+      const normalized = text.replace(/^球隊今日有賽\s*·?\s*/, '球隊有賽 ').replace(/^球隊有賽\s*·?\s*/, '球隊有賽 ');
+      if (node.textContent !== normalized) node.textContent = normalized;
       node.style.color = '#68788b';
       node.style.opacity = '0.72';
       node.style.fontWeight = '600';
