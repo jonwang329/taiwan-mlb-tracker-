@@ -84,15 +84,27 @@
     return `${num(stat.hits)}-${num(stat.atBats)}${stat.plateAppearances != null ? ` · ${stat.plateAppearances} PA` : ''}`;
   }
 
+  function isProbableStarter(player, game) {
+    if (player.group !== 'pitching') return false;
+    const probable = [game?.teams?.home?.probablePitcher?.id, game?.teams?.away?.probablePitcher?.id]
+      .map(Number).filter(Boolean);
+    return probable.includes(Number(player.id));
+  }
+
   function markUpcoming(player, result, game, team) {
     if (result.today?.onGame || result.today?.stat) return;
+    const probableStarter = isProbableStarter(player, game);
     result.today = {
       ...(result.today || {}), date: gameTaiwanDate(game), game: { gamePk: game.gamePk },
       team: team?.teamId ? { id: team.teamId, name: team.teamName } : result.today?.team,
-      scheduled: true, live: false
+      teamScheduled: true, scheduled: probableStarter, probableStarter, live: false
     };
     const node = document.querySelector(`a[href="#player-${player.id}"] .summary-today`);
-    if (node && (!node.textContent || /未出賽|無出賽|—/.test(node.textContent))) node.textContent = `今日有賽 · ${formatTime(game.gameDate)}`;
+    if (node && (!node.textContent || /未出賽|無出賽|今日有賽|球隊今日有賽|—/.test(node.textContent))) {
+      node.textContent = probableStarter
+        ? `預定先發 · ${formatTime(game.gameDate)}`
+        : `球隊今日有賽 · ${formatTime(game.gameDate)}`;
+    }
   }
 
   function markLive(player, result, feed, p, team) {
@@ -102,6 +114,7 @@
       ...(result.today || {}),
       date: result.today?.date || gameTaiwanDate({ gameDate: feed?.gameData?.datetime?.dateTime || feed?.gameData?.datetime?.officialDate }),
       stat: { ...stat }, game: { gamePk }, live: true, onGame: true,
+      scheduled: false, probableStarter: false,
       team: team?.teamId ? { id: team.teamId, name: team.teamName } : result.today?.team
     };
     const label = p.current ? 'LIVE · 現在場上' : 'LIVE · 已上場';
@@ -130,7 +143,7 @@
       const teamDetails = [...new Map([...currentTeams.values()].map(item => [item.teamId, item])).values()];
       const schedules = await Promise.allSettled(teamDetails.map(async team => {
         if (!team.sportId) throw new Error(`Missing official sportId for team ${team.teamId}`);
-        const data = await fetchJson(`${API}/schedule?teamId=${team.teamId}&sportId=${team.sportId}&startDate=${start}&endDate=${end}`);
+        const data = await fetchJson(`${API}/schedule?teamId=${team.teamId}&sportId=${team.sportId}&startDate=${start}&endDate=${end}&hydrate=probablePitcher`);
         return (data.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now));
       }));
       const games = new Map();
