@@ -9,6 +9,7 @@ const FALLBACK_URL=new URL('../tracked-players.json',import.meta.url);
 const {scheduleQueryWindow,gameTaiwanDate,isTaiwanTodayGame,taiwanDate}=TaiwanGameTime;
 let activeMlbRequests=0;
 const waitingMlbRequests=[];
+const teamSportCache=new Map();
 
 const num=v=>Number(v||0);
 const gameId=g=>g.game?.gamePk||`${g.date}-${g.level}`;
@@ -44,6 +45,12 @@ async function freshJson(url){
   const sep=url.includes('?')?'&':'?';
   const response=await mlbFetch(`${url}${sep}_=${Date.now()}`,{cache:'no-store',headers:{Accept:'application/json','Cache-Control':'no-cache'}});
   return response.json();
+}
+async function officialTeamSportId(teamId){
+  if(!teamSportCache.has(teamId)){
+    teamSportCache.set(teamId,freshJson(`${API}/teams/${teamId}`).then(data=>Number(data.teams?.[0]?.sport?.id||0)));
+  }
+  return teamSportCache.get(teamId);
 }
 async function loadTrackedPlayers(){
   const apiUrl=String(process.env.OBSERVATION_API_URL||'').replace(/\/$/,'');
@@ -108,10 +115,11 @@ async function fetchOfficialToday(player,teamIds,level){
   const seenGames=new Set();
   for(const teamId of ids){
     try{
-      // teamId is the authoritative schedule identity. Do not combine it with a
-      // separately inferred sportId: promotions/demotions can otherwise create
-      // an impossible teamId + sportId pair and hide a real MiLB game.
-      const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
+      // MiLB schedule requests require the team's official sportId. Resolve it
+      // from the team itself so promotions cannot create an invalid pairing.
+      const sportId=await officialTeamSportId(teamId);
+      if(!sportId)throw new Error(`Official sportId unavailable for team ${teamId}`);
+      const schedule=await freshJson(`${API}/schedule?teamId=${teamId}&sportId=${sportId}&startDate=${start}&endDate=${end}`);
       scheduleChecks+=1;
       const games=(schedule.dates||[]).flatMap(date=>date.games||[]).filter(game=>isTaiwanTodayGame(game,now));
       const ordered=[...games].sort((a,b)=>{
