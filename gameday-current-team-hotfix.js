@@ -49,6 +49,13 @@
       if (item.status !== 'fulfilled' || !item.value.teamId) continue;
       teams.set(item.value.playerId, item.value);
     }
+    const byTeamId = new Map();
+    await Promise.allSettled([...new Set([...teams.values()].map(item => item.teamId))].map(async teamId => {
+      const payload = await fetchJson(`${API}/teams/${teamId}`);
+      const sportId = Number(payload.teams?.[0]?.sport?.id || 0);
+      if (sportId) byTeamId.set(teamId, sportId);
+    }));
+    for (const team of teams.values()) team.sportId = byTeamId.get(team.teamId) || 0;
     return teams;
   }
 
@@ -120,8 +127,10 @@
       const currentTeams = await freshCurrentTeams(currentPairs);
       const { start, end } = scheduleQueryWindow(now);
       const uniqueTeamIds = [...new Set([...currentTeams.values()].map(item => item.teamId).filter(Boolean))];
-      const schedules = await Promise.allSettled(uniqueTeamIds.map(async teamId => {
-        const data = await fetchJson(`${API}/schedule?teamId=${teamId}&startDate=${start}&endDate=${end}`);
+      const teamDetails = [...new Map([...currentTeams.values()].map(item => [item.teamId, item])).values()];
+      const schedules = await Promise.allSettled(teamDetails.map(async team => {
+        if (!team.sportId) throw new Error(`Missing official sportId for team ${team.teamId}`);
+        const data = await fetchJson(`${API}/schedule?teamId=${team.teamId}&sportId=${team.sportId}&startDate=${start}&endDate=${end}`);
         return (data.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now));
       }));
       const games = new Map();
