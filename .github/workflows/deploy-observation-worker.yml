@@ -172,7 +172,15 @@ jobs:
           URL: ${{ steps.workers.outputs.line_url }}
           DEPLOY_TEST_TOKEN: ${{ github.token }}
         run: |
-          result=$(curl -fsS -X POST "$URL/internal/line-test" -H "Authorization: Bearer $DEPLOY_TEST_TOKEN")
+          response_file=$(mktemp)
+          status=$(curl -sS -o "$response_file" -w '%{http_code}' -X POST "$URL/internal/line-test" -H "Authorization: Bearer $DEPLOY_TEST_TOKEN")
+          result=$(cat "$response_file")
+          rm -f "$response_file"
+          echo "$result" | jq .
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::LINE Flex test returned HTTP $status: $result"
+            exit 1
+          fi
           echo "$result" | jq -e '.ok == true and .lineStatus >= 200 and .lineStatus < 300'
           echo "One user-authorized LINE Flex test sent"
       - name: Configure dashboard API URL
