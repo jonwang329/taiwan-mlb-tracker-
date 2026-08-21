@@ -4,6 +4,7 @@ let lastResults = [];
 let lastSignature = '';
 let lastSuccessAt = 0;
 let lastCheckAt = 0;
+let initialConfirmationPending = true;
 const API='https://statsapi.mlb.com/api/v1';
 const LEVELS=[[1,'MLB'],[11,'AAA'],[12,'AA'],[13,'高階 1A'],[14,'1A'],[16,'新人聯盟']];
 const CACHE_KEY='taiwan-mlb-tracker:last-good:v2';
@@ -100,7 +101,12 @@ function updateMetrics(results){const played=results.map((r,i)=>[r,players[i]]).
 function snapshotSignature(results){return JSON.stringify({players:players.map(p=>[p.id,p.name,p.org,p.group]),results:results.map(r=>({today:r.today,latest:r.latest,season:r.season,games:(r.games||[]).slice(0,5)}))});}
 function persistSnapshot(results,savedAt=Date.now()){lastPlayers=structuredClone(players);lastResults=structuredClone(results);lastSignature=snapshotSignature(results);lastSuccessAt=savedAt;try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt,players:lastPlayers,results:lastResults}))}catch(error){console.warn('Could not persist last-good snapshot',error)}}
 function paint(results,statusText){const summary=document.querySelector('#player-summary'),details=document.querySelector('#player-details');summary.innerHTML=summaryGroup('hitting',results)+summaryGroup('pitching',results);details.innerHTML=players.map((p,i)=>detail(p,results[i])).join('');updateMetrics(results);wireImages();document.querySelector('#last-update').textContent=statusText||`MLB API 已更新 · ${formatTime(lastSuccessAt||Date.now())}`;document.dispatchEvent(new CustomEvent('tracker:players-loaded',{detail:players}));}
-function restoreSnapshot(){try{const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(!cached||!Array.isArray(cached.players)||!Array.isArray(cached.results)||cached.players.length!==cached.results.length)return false;setTrackedPlayers(cached.players);lastPlayers=structuredClone(cached.players);lastResults=structuredClone(cached.results);lastSignature=snapshotSignature(lastResults);lastSuccessAt=Number(cached.savedAt)||0;paint(lastResults,`最後有效資料 · ${formatTime(lastSuccessAt)}`);return true}catch(error){console.warn('Could not restore last-good snapshot',error);return false}}
+function markInitialConfirmationPending(){
+  document.querySelector('#today-count').textContent='…';
+  document.querySelectorAll('.summary-today').forEach(node=>{node.textContent='正在確認今日出賽…'});
+  document.querySelector('#last-update').textContent='正在向 MLB／MiLB 確認今日即時資料…';
+}
+function restoreSnapshot(){try{const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(!cached||!Array.isArray(cached.players)||!Array.isArray(cached.results)||cached.players.length!==cached.results.length)return false;setTrackedPlayers(cached.players);lastPlayers=structuredClone(cached.players);lastResults=structuredClone(cached.results);lastSignature=snapshotSignature(lastResults);lastSuccessAt=Number(cached.savedAt)||0;paint(lastResults,`最後有效資料 · ${formatTime(lastSuccessAt)}`);markInitialConfirmationPending();return true}catch(error){console.warn('Could not restore last-good snapshot',error);return false}}
 async function collectResults(){
   const previousById=new Map(lastPlayers.map((p,i)=>[Number(p.id),lastResults[i]]));
   const fresh=[];
@@ -149,5 +155,10 @@ async function refreshData({list=null,reason='manual'}={}){
 window.applyTrackedPlayers=async list=>{if(!Array.isArray(list)||!list.length)throw new Error('觀察名單格式錯誤');return refreshData({list,reason:'watchlist'})};
 document.querySelector('#today-date').textContent=new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',weekday:'short'}).format(new Date());
 document.querySelector('#refresh-btn').addEventListener('click',async e=>{e.currentTarget.disabled=true;try{await refreshData({reason:'button'})}finally{e.currentTarget.disabled=false}});
+window.addEventListener('tracker:gameday-universe',event=>{
+  if(!initialConfirmationPending||Number(event.detail?.scheduleSuccesses||0)===0)return;
+  initialConfirmationPending=false;
+  paint(lastResults,`MLB／MiLB 即時資料已確認 · ${formatTime(Date.now())}`);
+});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-lastCheckAt>=AUTO_RECHECK_MS)refreshData({reason:'resume'}).catch(()=>{})});
 const restored=restoreSnapshot();if(!restored)document.querySelector('#player-summary').innerHTML='<div class="loading">正在讀取 MLB / MiLB 官方資料…</div>';refreshData({reason:'startup'}).catch(()=>{});

@@ -121,6 +121,7 @@
         const data = await fetchJson(`${API}/schedule?sportId=${sportId}&startDate=${start}&endDate=${end}`);
         return (data.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now));
       }));
+      const scheduleSuccesses = schedules.filter(item => item.status === 'fulfilled').length;
 
       const games = new Map();
       for (const item of schedules) {
@@ -156,8 +157,8 @@
         const lastUpdate = document.querySelector('#last-update');
         if (lastUpdate) lastUpdate.textContent = `Gameday 全層級 LIVE 已確認 · ${new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(now)}`;
       }
-      window.dispatchEvent(new CustomEvent('tracker:gameday-universe', { detail: { games: games.size, matched } }));
-      return { games: games.size, matched };
+      window.dispatchEvent(new CustomEvent('tracker:gameday-universe', { detail: { games: games.size, matched, scheduleSuccesses } }));
+      return { games: games.size, matched, scheduleSuccesses };
     } catch (error) {
       console.warn('Sport-wide Gameday scan failed', error);
       return { games: 0, matched: 0, error: error.message };
