@@ -104,24 +104,38 @@
     }
   }
 
+  function repaintCurrentStatus(player, status) {
+    if (!status) return;
+    const summaryLevel = document.querySelector(`a[href="#player-${player.id}"] .summary-club b`);
+    if (summaryLevel && status.level) summaryLevel.textContent = status.level;
+    const detailLevel = document.querySelector(`#player-${player.id} .level`);
+    if (detailLevel && status.level) detailLevel.textContent = status.level;
+    const summaryClub = document.querySelector(`a[href="#player-${player.id}"] .summary-club small`);
+    if (summaryClub && status.teamName) summaryClub.textContent = status.teamName;
+    const detailOrg = document.querySelector(`#player-${player.id} header p`);
+    if (detailOrg && status.teamName) {
+      const role = String(detailOrg.textContent || '').split('·').slice(1).join('·').trim();
+      detailOrg.textContent = role ? `${status.teamName} · ${role}` : status.teamName;
+    }
+  }
+
   async function resolvePlayer(player, result) {
-    // Highest authority: an actual MLB/MiLB Gameday appearance for today's game.
     const todayPk = num(result.today?.game?.gamePk);
     const live = await gameTeamAndLevel(todayPk, player);
     if (live?.appeared) {
       setStatus(result, live);
+      repaintCurrentStatus(player, live);
       return live;
     }
 
-    // Second authority: fresh official currentTeam + its official sportId.
     const cur = await currentTeam(player).catch(() => null);
     if (cur) {
       const status = { ...cur, evidence: 'CURRENT_TEAM' };
       setStatus(result, status);
+      repaintCurrentStatus(player, status);
       return status;
     }
 
-    // Last resort: never promote historical level to authoritative current status.
     const fallback = {
       teamId: num(result.today?.team?.id || result.latest?.team?.id),
       teamName: result.today?.team?.name || result.latest?.team?.name || '',
@@ -130,6 +144,7 @@
       evidence: 'CACHE_FALLBACK'
     };
     setStatus(result, fallback);
+    repaintCurrentStatus(player, fallback);
     return fallback;
   }
 
@@ -139,20 +154,28 @@
       if (!status) return;
       game.team = status.teamId ? { id: status.teamId, name: status.teamName } : game.team;
       game.level = status.level || game.level;
-      // Canonical box-score identity is always gamePk. Any stale cached URL is invalid.
       game.boxScoreUrl = `https://www.mlb.com/gameday/${status.gamePk}`;
+      game.sourceAuthority = 'GAMEDAY';
     }).catch(() => {});
   }
 
+  function canonicalPkFromAnchor(a) {
+    const dataPk = a.dataset?.gamePk || a.dataset?.gamepk;
+    if (dataPk) return String(dataPk);
+    const href = String(a.getAttribute('href') || '');
+    return href.match(/gameday\/(\d+)/)?.[1] || href.match(/[?&](?:gamePk|gamepk)=(\d+)/)?.[1] || null;
+  }
+
   function patchAnchors(player, result) {
-    const games = Array.isArray(result.games) ? result.games : [];
-    const byPk = new Map(games.filter(g => g?.game?.gamePk).map(g => [String(g.game.gamePk), g]));
-    document.querySelectorAll(`#player-${player.id} a[href*="gameday"], #player-${player.id} a[data-game-pk]`).forEach(a => {
-      const attrPk = a.dataset?.gamePk;
-      const match = a.href?.match(/gameday\/(\d+)/);
-      const pk = attrPk || match?.[1];
+    const allGames = [result.today, result.latest, ...(Array.isArray(result.games) ? result.games : [])].filter(Boolean);
+    const byPk = new Map(allGames.filter(g => g?.game?.gamePk).map(g => [String(g.game.gamePk), g]));
+    document.querySelectorAll(`#player-${player.id} a, a[data-player-id="${player.id}"]`).forEach(a => {
+      const pk = canonicalPkFromAnchor(a);
+      if (!pk) return;
       const game = byPk.get(String(pk));
-      if (game?.game?.gamePk) a.href = `https://www.mlb.com/gameday/${game.game.gamePk}`;
+      if (!game?.game?.gamePk) return;
+      a.href = `https://www.mlb.com/gameday/${game.game.gamePk}`;
+      a.dataset.gamePk = String(game.game.gamePk);
     });
   }
 
@@ -169,7 +192,7 @@
     window.dispatchEvent(new CustomEvent('tracker:single-source-reconciled'));
   }
 
-  window.TaiwanMlbSingleSource = { reconcileAll, resolvePlayer, teamMeta };
+  window.TaiwanMlbSingleSource = { reconcileAll, resolvePlayer, teamMeta, gameTeamAndLevel };
   document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(reconcileAll, 1200));
   window.addEventListener('tracker:live-fast-refresh', () => reconcileAll());
   window.addEventListener('tracker:gameday-current-team', () => reconcileAll());
