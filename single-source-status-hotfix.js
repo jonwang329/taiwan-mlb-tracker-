@@ -1,6 +1,7 @@
 (() => {
   const API = 'https://statsapi.mlb.com/api/v1';
   const LIVE_API = 'https://statsapi.mlb.com/api/v1.1';
+  const timeLogic = window.TaiwanGameTime;
   const LEVEL_BY_SPORT_ID = new Map([
     [1, 'MLB'], [11, 'AAA'], [12, 'AA'], [13, 'A+'], [14, 'A'], [16, 'Rookie'], [17, 'Rookie']
   ]);
@@ -8,6 +9,14 @@
   const cache = new Map();
   const nowIso = () => new Date().toISOString();
   const num = v => Number(v || 0);
+  const taiwanDate = value => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return timeLogic?.dateInZone
+      ? timeLogic.dateInZone(parsed, 'Asia/Taipei')
+      : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(parsed);
+  };
 
   async function fetchJson(url, timeout = 8000) {
     const controller = new AbortController();
@@ -80,18 +89,32 @@
 
   async function gameTeamAndLevel(gamePk, player) {
     if (!gamePk) return null;
-    try {
-      const feed = await fetchJson(`${LIVE_API}/game/${gamePk}/feed/live`);
-      const e = boxEntry(feed, player.id);
-      if (!e) return null;
-      const homeHas = !!feed?.liveData?.boxscore?.teams?.home?.players?.[`ID${player.id}`];
-      const team = homeHas ? feed?.gameData?.teams?.home : feed?.gameData?.teams?.away;
-      if (!team?.id) return null;
-      const meta = await teamMeta(team.id);
-      return { ...meta, gamePk: num(gamePk), appeared: appeared(feed, player), evidence: 'GAMEDAY' };
-    } catch (_) {
-      return null;
-    }
+    const key = `game:${gamePk}:player:${player.id}`;
+    if (cache.has(key)) return cache.get(key);
+    const task = (async () => {
+      try {
+        const feed = await fetchJson(`${LIVE_API}/game/${gamePk}/feed/live`);
+        const e = boxEntry(feed, player.id);
+        if (!e) return null;
+        const homeHas = !!feed?.liveData?.boxscore?.teams?.home?.players?.[`ID${player.id}`];
+        const team = homeHas ? feed?.gameData?.teams?.home : feed?.gameData?.teams?.away;
+        if (!team?.id) return null;
+        const meta = await teamMeta(team.id);
+        const officialTimestamp = feed?.gameData?.datetime?.dateTime || feed?.gameData?.datetime?.originalDate || feed?.gameData?.datetime?.officialDate || '';
+        return {
+          ...meta,
+          gamePk: num(gamePk),
+          appeared: appeared(feed, player),
+          evidence: 'GAMEDAY',
+          officialTimestamp,
+          taiwanDate: taiwanDate(officialTimestamp)
+        };
+      } catch (_) {
+        return null;
+      }
+    })();
+    cache.set(key, task);
+    return task;
   }
 
   function setStatus(result, status) {
@@ -117,6 +140,29 @@
       const role = String(detailOrg.textContent || '').split('·').slice(1).join('·').trim();
       detailOrg.textContent = role ? `${status.teamName} · ${role}` : status.teamName;
     }
+  }
+
+  function canonicalGameTime(game) {
+    const stamp = game?.officialTimestamp || game?.gameDate || game?.game?.gameDate || '';
+    const parsed = stamp ? new Date(stamp).getTime() : NaN;
+    if (!Number.isNaN(parsed)) return parsed;
+    const dateOnly = game?.date;
+    if (dateOnly) {
+      const fallback = new Date(`${String(dateOnly).slice(0, 10)}T12:00:00+08:00`).getTime();
+      if (!Number.isNaN(fallback)) return fallback;
+    }
+    return 0;
+  }
+
+  function refreshLatest(result) {
+    const games = Array.isArray(result.games) ? result.games.filter(g => g?.game?.gamePk) : [];
+    games.sort((a, b) => {
+      const byTime = canonicalGameTime(b) - canonicalGameTime(a);
+      if (byTime) return byTime;
+      return num(b?.game?.gamePk) - num(a?.game?.gamePk);
+    });
+    result.games = games.slice(0, 5);
+    result.latest = result.games[0] || result.latest;
   }
 
   async function resolvePlayer(player, result) {
@@ -148,15 +194,19 @@
     return fallback;
   }
 
-  function fixGameObject(player, game) {
-    if (!game?.game?.gamePk) return Promise.resolve();
-    return gameTeamAndLevel(game.game.gamePk, player).then(status => {
-      if (!status) return;
-      game.team = status.teamId ? { id: status.teamId, name: status.teamName } : game.team;
-      game.level = status.level || game.level;
-      game.boxScoreUrl = `https://www.mlb.com/gameday/${status.gamePk}`;
-      game.sourceAuthority = 'GAMEDAY';
-    }).catch(() => {});
+  async function fixGameObject(player, game) {
+    if (!game?.game?.gamePk) return;
+    const status = await gameTeamAndLevel(game.game.gamePk, player).catch(() => null);
+    if (!status) return;
+    game.team = status.teamId ? { id: status.teamId, name: status.teamName } : game.team;
+    game.level = status.level || game.level;
+    game.boxScoreUrl = `https://www.mlb.com/gameday/${status.gamePk}`;
+    game.sourceAuthority = 'GAMEDAY';
+    if (status.officialTimestamp) {
+      game.officialTimestamp = status.officialTimestamp;
+      game.gameDate = status.officialTimestamp;
+      game.date = status.taiwanDate || game.date;
+    }
   }
 
   function canonicalPkFromAnchor(a) {
@@ -182,17 +232,18 @@
   async function reconcileAll() {
     const all = pairs();
     await Promise.allSettled(all.map(async ({ player, result }) => {
-      await resolvePlayer(player, result);
-      const history = Array.isArray(result.games) ? result.games.slice(0, 5) : [];
+      const history = Array.isArray(result.games) ? result.games.slice(0, 8) : [];
       await Promise.allSettled(history.map(g => fixGameObject(player, g)));
       if (result.latest?.game?.gamePk) await fixGameObject(player, result.latest);
       if (result.today?.game?.gamePk) await fixGameObject(player, result.today);
+      refreshLatest(result);
+      await resolvePlayer(player, result);
       patchAnchors(player, result);
     }));
     window.dispatchEvent(new CustomEvent('tracker:single-source-reconciled'));
   }
 
-  window.TaiwanMlbSingleSource = { reconcileAll, resolvePlayer, teamMeta, gameTeamAndLevel };
+  window.TaiwanMlbSingleSource = { reconcileAll, resolvePlayer, teamMeta, gameTeamAndLevel, refreshLatest };
   document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(reconcileAll, 1200));
   window.addEventListener('tracker:live-fast-refresh', () => reconcileAll());
   window.addEventListener('tracker:gameday-current-team', () => reconcileAll());
