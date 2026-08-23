@@ -87,9 +87,10 @@
     return teamMeta(t.id);
   }
 
-  async function gameTeamAndLevel(gamePk, player) {
+  async function gameTeamAndLevel(gamePk, player, { force = false } = {}) {
     if (!gamePk) return null;
     const key = `game:${gamePk}:player:${player.id}`;
+    if (force) cache.delete(key);
     if (cache.has(key)) return cache.get(key);
     const task = (async () => {
       try {
@@ -142,6 +143,23 @@
     }
   }
 
+  function repaintHistory(player, result) {
+    const card = document.querySelector(`#player-${player.id}`);
+    if (!card || typeof gameRows !== 'function') return;
+    const section = card.querySelector('.last-five');
+    if (!section) return;
+    const existing = section.querySelector('.game-table, .empty');
+    const holder = document.createElement('div');
+    holder.innerHTML = gameRows(player, result.games || []);
+    const replacement = holder.firstElementChild;
+    if (!replacement) return;
+    if (result.today?.live) {
+      const firstResult = replacement.querySelector('.game-row:not(.game-head) span:nth-child(2)');
+      if (firstResult) firstResult.textContent = 'LIVE';
+    }
+    if (existing) existing.replaceWith(replacement); else section.appendChild(replacement);
+  }
+
   function canonicalGameTime(game) {
     const stamp = game?.officialTimestamp || game?.gameDate || game?.game?.gameDate || '';
     const parsed = stamp ? new Date(stamp).getTime() : NaN;
@@ -165,9 +183,9 @@
     result.latest = result.games[0] || result.latest;
   }
 
-  async function resolvePlayer(player, result) {
+  async function resolvePlayer(player, result, { force = false } = {}) {
     const todayPk = num(result.today?.game?.gamePk);
-    const live = await gameTeamAndLevel(todayPk, player);
+    const live = await gameTeamAndLevel(todayPk, player, { force });
     if (live?.appeared) {
       setStatus(result, live);
       repaintCurrentStatus(player, live);
@@ -194,9 +212,9 @@
     return fallback;
   }
 
-  async function fixGameObject(player, game) {
+  async function fixGameObject(player, game, { force = false } = {}) {
     if (!game?.game?.gamePk) return;
-    const status = await gameTeamAndLevel(game.game.gamePk, player).catch(() => null);
+    const status = await gameTeamAndLevel(game.game.gamePk, player, { force }).catch(() => null);
     if (!status) return;
     game.team = status.teamId ? { id: status.teamId, name: status.teamName } : game.team;
     game.level = status.level || game.level;
@@ -229,24 +247,26 @@
     });
   }
 
-  async function reconcileAll() {
+  async function reconcileAll({ force = false } = {}) {
     const all = pairs();
     await Promise.allSettled(all.map(async ({ player, result }) => {
       const history = Array.isArray(result.games) ? result.games.slice(0, 8) : [];
-      await Promise.allSettled(history.map(g => fixGameObject(player, g)));
-      if (result.latest?.game?.gamePk) await fixGameObject(player, result.latest);
-      if (result.today?.game?.gamePk) await fixGameObject(player, result.today);
+      await Promise.allSettled(history.map(g => fixGameObject(player, g, { force })));
+      if (result.latest?.game?.gamePk) await fixGameObject(player, result.latest, { force });
+      if (result.today?.game?.gamePk) await fixGameObject(player, result.today, { force });
       refreshLatest(result);
-      await resolvePlayer(player, result);
+      await resolvePlayer(player, result, { force });
+      repaintHistory(player, result);
       patchAnchors(player, result);
     }));
-    window.dispatchEvent(new CustomEvent('tracker:single-source-reconciled'));
+    window.dispatchEvent(new CustomEvent('tracker:single-source-reconciled', { detail: { force } }));
   }
 
   window.TaiwanMlbSingleSource = { reconcileAll, resolvePlayer, teamMeta, gameTeamAndLevel, refreshLatest };
-  document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(reconcileAll, 1200));
-  window.addEventListener('tracker:live-fast-refresh', () => reconcileAll());
-  window.addEventListener('tracker:gameday-current-team', () => reconcileAll());
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) reconcileAll(); });
-  setTimeout(reconcileAll, 1500);
+  document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(() => reconcileAll({ force: true }), 1200));
+  window.addEventListener('tracker:live-fast-refresh', () => reconcileAll({ force: true }));
+  window.addEventListener('tracker:gameday-current-team', () => reconcileAll({ force: true }));
+  window.addEventListener('tracker:gameday-universe', () => reconcileAll({ force: true }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) reconcileAll({ force: true }); });
+  setTimeout(() => reconcileAll(), 1500);
 })();
