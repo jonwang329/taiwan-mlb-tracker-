@@ -1,10 +1,15 @@
 (() => {
   const btn = document.querySelector('#refresh-btn');
+  const label = btn?.querySelector('span');
   const lastUpdate = document.querySelector('#last-update');
   if (!btn) return;
 
-  const MAX_WAIT_MS = 20_000;
+  const MAX_WAIT_MS = 35_000;
   let finishTimer = null;
+  let holding = false;
+  let sawUniverse = false;
+  let suppressObserver = false;
+  const idleLabel = label?.textContent || '更新';
 
   const formatTime = ts => new Intl.DateTimeFormat('zh-TW', {
     timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false
@@ -38,6 +43,15 @@
     return 'MLB 已確認 · 今日暫無出賽';
   }
 
+  function forceBusyVisual() {
+    if (!holding) return;
+    suppressObserver = true;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    if (label) label.textContent = '檢查中…';
+    queueMicrotask(() => { suppressObserver = false; });
+  }
+
   function finalizeRows({ timedOut = false } = {}) {
     for (const { player, result } of pairs()) {
       const summary = document.querySelector(`a[href="#player-${player.id}"] .summary-today`);
@@ -54,10 +68,18 @@
       }
     }
 
+    holding = false;
+    sawUniverse = false;
+    clearTimeout(finishTimer);
+    suppressObserver = true;
     btn.disabled = false;
     btn.removeAttribute('aria-busy');
-    if (timedOut && lastUpdate && /正在/.test(lastUpdate.textContent || '')) {
-      lastUpdate.textContent = `MLB 檢查已結束 · ${formatTime(Date.now())}`;
+    if (label) label.textContent = idleLabel;
+    queueMicrotask(() => { suppressObserver = false; });
+    if (lastUpdate) {
+      lastUpdate.textContent = timedOut
+        ? `MLB 檢查逾時 · 已保留最後確認資料 · ${formatTime(Date.now())}`
+        : `MLB / MiLB 最新資料已確認 · ${formatTime(Date.now())}`;
     }
   }
 
@@ -66,14 +88,33 @@
     finishTimer = setTimeout(() => finalizeRows({ timedOut: true }), MAX_WAIT_MS);
   }
 
-  btn.addEventListener('click', armFailSafe, false);
+  btn.addEventListener('click', () => {
+    holding = true;
+    sawUniverse = false;
+    forceBusyVisual();
+    armFailSafe();
+  }, false);
+
+  // Other refresh listeners historically re-enabled the button in their own finally blocks.
+  // While a full manual refresh is still in flight, immediately put it back into busy state.
+  const observer = new MutationObserver(() => {
+    if (suppressObserver || !holding) return;
+    if (!btn.disabled || btn.getAttribute('aria-busy') !== 'true') forceBusyVisual();
+  });
+  observer.observe(btn, { attributes: true, attributeFilter: ['disabled', 'aria-busy'] });
 
   window.addEventListener('tracker:gameday-universe', () => {
-    clearTimeout(finishTimer);
-    setTimeout(() => finalizeRows(), 100);
+    if (!holding) return;
+    sawUniverse = true;
+    armFailSafe();
+  });
+
+  window.addEventListener('tracker:single-source-reconciled', () => {
+    if (!holding || !sawUniverse) return;
+    finalizeRows();
   });
 
   window.addEventListener('tracker:live-fast-refresh', () => {
-    if (btn.getAttribute('aria-busy') === 'true') armFailSafe();
+    if (holding) armFailSafe();
   });
 })();
