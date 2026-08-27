@@ -59,21 +59,20 @@
     </section>
   </div>
 
+  <!-- V2: snapshot is display fallback only. Baseball truth comes from app.js official MLB/MiLB refresh. -->
   <script>document.write('<script src="data/dashboard-snapshot.js?_='+Date.now()+'"><\/script>');</script>
   <script src="player-identities.js?v=20260819-identities-v4"></script>
-  <script src="snapshot-bootstrap.js?v=20260819-central-wins-v1"></script>
+  <script src="snapshot-bootstrap.js?v=20260828-v2-fallback-only"></script>
   <script src="observation-config.js?v=20260816-p0"></script>
   <script src="observation-name-adapter.js?v=20260813-identities-v2"></script>
   <script src="taiwan-game-time.js?v=20260816-p0"></script>
-  <script src="today-date-integrity-guard.js?v=20260827-v1"></script>
   <script src="mlb-fetch-guard.js?v=20260821-proxy-v3"></script>
-  <script src="app.js?v=20260821-confirm-first-v2"></script>
-  <script src="official-today-hotfix.js?v=20260817-team-authoritative-v1"></script>
-  <script src="gameday-presence-hotfix.js?v=20260819-live-presence-v1"></script>
-  <script src="single-source-status-hotfix.js?v=20260824-refresh-v2"></script>
-  <script src="today-gamepk-date-guard.js?v=20260827-v1"></script>
-  <script src="team-schedule-visual.js?v=20260822-v1"></script>
-  <script src="refresh-terminal-state-fix.js?v=20260828-visible-first-v6"></script>
+
+  <!-- One refresh owner only. No game-state hotfix scripts in V2. -->
+  <script src="app.js?v=20260828-refresh-v2"></script>
+
+  <!-- Read-only feature modules: they consume the normalized app model and never own refresh. -->
+  <script src="ranking-engine.js?v=20260828-v1"></script>
   <script src="summary-extra-stats.js?v=20260821-pitch-v2"></script>
   <script src="smart-insight.js?v=20260817-live-v2"></script>
   <script src="watchlist-fast-feedback.js?v=20260814-fast-v2"></script>
