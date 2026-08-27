@@ -59,7 +59,7 @@
     </section>
   </div>
 
-  <!-- V2: snapshot is display fallback only. Baseball truth comes from app.js official MLB/MiLB refresh. -->
+  <!-- V2: snapshot is display fallback only. Baseball truth comes from the official MLB/MiLB data layer. -->
   <script>document.write('<script src="data/dashboard-snapshot.js?_='+Date.now()+'"><\/script>');</script>
   <script src="player-identities.js?v=20260819-identities-v4"></script>
   <script src="snapshot-bootstrap.js?v=20260828-v2-fallback-only"></script>
@@ -67,6 +67,10 @@
   <script src="observation-name-adapter.js?v=20260813-identities-v2"></script>
   <script src="taiwan-game-time.js?v=20260816-p0"></script>
   <script src="mlb-fetch-guard.js?v=20260821-proxy-v3"></script>
+
+  <!-- V2 foundations. These modules are side-effect free until app.js migrates ownership into them. -->
+  <script src="data/mlb-client.js?v=20260828-v1"></script>
+  <script src="core/player-store.js?v=20260828-v1"></script>
 
   <!-- One refresh owner only. No game-state hotfix scripts in V2. -->
   <script src="app.js?v=20260828-refresh-v2"></script>
