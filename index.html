@@ -10,7 +10,7 @@
   <title>台灣旅美球員追蹤</title>
   <link rel="stylesheet" href="styles.css?v=20260812-systemfix">
   <link rel="stylesheet" href="refresh-button.css?v=20260819-v1">
-  <link rel="stylesheet" href="summary-extra-stats.css?v=20260830-rates-v1">
+  <link rel="stylesheet" href="summary-extra-stats.css?v=20260830-league-context-v1">
   <link rel="stylesheet" href="today-highlight.css?v=20260824-reliever-v3">
   <link rel="stylesheet" href="smart-insight.css?v=20260814-insight-v2">
 </head>
@@ -60,6 +60,8 @@
   </div>
 
   <script>document.write('<script src="data/dashboard-snapshot.js?_='+Date.now()+'"><\/script>');</script>
+  <script src="data/league-benchmarks.js?v=20260830-league-context-v1"></script>
+  <script>window.dispatchEvent(new Event('tracker:league-benchmarks-loaded'));</script>
   <script src="player-identities.js?v=20260819-identities-v4"></script>
   <script src="snapshot-bootstrap.js?v=20260828-roster-repair-v3"></script>
   <script src="observation-config.js?v=20260816-p0"></script>
@@ -75,7 +77,7 @@
   <script src="today-gamepk-date-guard.js?v=20260827-v1"></script>
   <script src="team-schedule-visual.js?v=20260822-v1"></script>
   <script src="refresh-terminal-state-fix.js?v=20260829-airport-stability-v1"></script>
-  <script src="summary-extra-stats.js?v=20260830-rates-v1"></script>
+  <script src="summary-extra-stats.js?v=20260830-league-context-v1"></script>
   <script src="smart-insight.js?v=20260817-live-v2"></script>
   <script src="watchlist-fast-feedback.js?v=20260814-fast-v2"></script>
   <script src="today-highlight.js?v=20260824-carousel-v3"></script>
