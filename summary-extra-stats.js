@@ -38,8 +38,8 @@
     if(!Number.isFinite(playerValue)||!Number.isFinite(leagueValue)||leagueValue<=0)return null;
     const advantage=pitching?(leagueValue-playerValue)/leagueValue:(playerValue-leagueValue)/leagueValue;
     const magnitude=Math.abs(advantage)*100;
-    let text='≈ league avg';
-    if(magnitude>=2)text=`${Math.round(magnitude)}% ${advantage>0?'better':'worse'} vs league`;
+    let text='≈ LG';
+    if(magnitude>=2)text=`${advantage>0?'+':'-'}${Math.round(magnitude)}% vs LG`;
     return {text,leagueName:benchmark.leagueName||'league',leagueValue};
   }
   function addLeagueContext(row,pair,pitching){
