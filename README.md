@@ -2,6 +2,15 @@
 
 A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats API data, with LINE notifications and a shared Cloudflare KV observation list.
 
+## Production status
+
+2026-08-29 stability recovery:
+
+- Keep the last-good dashboard visible while background reconciliation runs; the UI must not become an all-page indefinite "checking" state.
+- The browser-wide `gameday-universe-hotfix.js` scan is disabled from production startup because it can create excessive client-side work. Authoritative scheduled snapshot refresh remains the primary full-roster data path.
+- LINE production schedules are explicitly enabled at 07:00, 08:00, 09:00 and 12:00 Asia/Taipei. Do not remove the `schedule:` trigger when preserving manual test support.
+- Required workflow after changes: CHECK → FIX → DEPLOY → TESTING → README verification → READY TO TEST.
+
 ## Shared observation list
 
 The production source of truth is the Cloudflare Workers KV namespace `taiwan-mlb-observation-list`.
