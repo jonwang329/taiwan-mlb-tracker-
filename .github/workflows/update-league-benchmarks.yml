@@ -1,0 +1,38 @@
+name: Update league benchmarks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/update-league-benchmarks.py'
+      - '.github/workflows/update-league-benchmarks.yml'
+  schedule:
+    - cron: '20 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build league benchmark snapshot
+        run: python scripts/update-league-benchmarks.py
+      - name: Commit benchmark snapshot
+        shell: bash
+        run: |
+          if git diff --quiet -- data/league-benchmarks.js; then
+            echo 'No benchmark change'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/league-benchmarks.js
+          git commit -m 'Update league benchmarks'
+          git push
