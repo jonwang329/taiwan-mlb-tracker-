@@ -12,11 +12,12 @@ test('central snapshot is loaded before app bootstrap',async()=>{
   assert.ok(central>=0&&bootstrap>central&&app>bootstrap,'central snapshot and bootstrap must load before app.js');
 });
 
-test('central snapshot seeds the existing last-good cache only when newer',async()=>{
+test('central snapshot preserves a complete newer local cache and repairs incomplete rosters',async()=>{
   const bootstrap=await read('snapshot-bootstrap.js');
   assert.match(bootstrap,/taiwan-mlb-tracker:last-good:v2/);
   assert.match(bootstrap,/CENTRAL_DASHBOARD_SNAPSHOT/);
-  assert.match(bootstrap,/localSaved>=centralSaved/);
+  assert.match(bootstrap,/localHasFullRoster/);
+  assert.match(bootstrap,/!localHasFullRoster\|\|Number\(local\.savedAt\|\|0\)<Number\(central\.savedAt\|\|0\)/);
   assert.match(bootstrap,/localStorage\.setItem/);
 });
 
@@ -82,6 +83,6 @@ test('snapshot workflow only commits the data file and cannot loop on itself',as
   assert.match(workflow,/paths-ignore:\s*\n\s*- 'data\/dashboard-snapshot\.js'/);
   assert.match(workflow,/git add data\/dashboard-snapshot\.js/);
   assert.match(workflow,/git diff --quiet -- data\/dashboard-snapshot\.js/);
-  assert.match(workflow,/7,17,27,37,47,57 \* \* \* \*/);
+  assert.match(workflow,/\*\/5 \* \* \* \*/);
   assert.doesNotMatch(workflow,/send-line-update|line-daily-updates/i);
 });
