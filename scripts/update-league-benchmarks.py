@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Daily cached league context for the dashboard; never calculated in the browser.
 import json
 import math
 import urllib.parse
