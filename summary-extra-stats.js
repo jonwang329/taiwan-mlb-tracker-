@@ -55,6 +55,13 @@
     const advantage=pitching?(leagueValue-playerValue)/leagueValue:(playerValue-leagueValue)/leagueValue;
     return {text:`${advantage>0?'+':''}${Math.round(advantage*100)}%`,leagueName:benchmark.leagueName||'league',leagueValue,leagueId};
   }
+  function benchmarkDate(){
+    const stamp=window.LEAGUE_BENCHMARKS?.generatedAt;
+    if(!stamp)return '';
+    const d=new Date(stamp);
+    if(Number.isNaN(d.getTime()))return '';
+    return new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric'}).format(d);
+  }
   function removeLegacyLeagueNotes(primary){
     if(!primary)return;
     primary.querySelectorAll('.league-context,.rate-league-context,.league-gap').forEach(el=>el.remove());
@@ -83,15 +90,17 @@
     primary.appendChild(note);
   }
   function addLeagueKey(group){
-    const h3=group.querySelector('header h3');
-    if(!h3)return;
-    let key=h3.querySelector('.league-key');
+    const header=group.querySelector(':scope > header');
+    if(!header)return;
+    header.querySelector('h3 .league-key')?.remove();
+    let key=header.querySelector(':scope > .league-key');
     if(!key){
       key=document.createElement('small');
       key.className='league-key';
-      h3.appendChild(key);
+      header.appendChild(key);
     }
-    key.textContent='GRAY % = VS LEAGUE';
+    const date=benchmarkDate();
+    key.textContent=`LG%＝vs 球員所屬聯盟平均${date?` · ${date}`:''}`;
   }
   function sync(){
     const pairs=dataPairs();
