@@ -24,14 +24,18 @@
     return false;
   }
 
-  function finish(message = `已完成檢查 · ${formatTime(Date.now())}`) {
+  function finish(message = `已完成檢查 · ${formatTime(Date.now())}`, repaint = true) {
     clearTimeout(finishTimer);
     finishTimer = null;
     btn.disabled = false;
     btn.removeAttribute('aria-busy');
     btn.classList.remove('is-refreshing', 'refreshing', 'loading');
     if (label) label.textContent = idleLabel;
-    if (!repaintLastGood(message) && lastUpdate) lastUpdate.textContent = message;
+    if (repaint) {
+      if (!repaintLastGood(message) && lastUpdate && lastUpdate.textContent !== message) lastUpdate.textContent = message;
+    } else if (lastUpdate && lastUpdate.textContent !== message) {
+      lastUpdate.textContent = message;
+    }
   }
 
   function armFailSafe() {
@@ -41,9 +45,6 @@
     }, MAX_WAIT_MS);
   }
 
-  // app.js restores the last-good snapshot first, then its legacy startup state
-  // temporarily overwrites every Today row with "checking". Restore the snapshot
-  // immediately and keep it visible while reconciliation happens in background.
   setTimeout(() => {
     try {
       if (typeof initialConfirmationPending !== 'undefined') initialConfirmationPending = false;
@@ -51,8 +52,6 @@
     repaintLastGood('顯示目前資料 · 背景更新中');
   }, 0);
 
-  // Catch any later startup script that tries to put the entire dashboard back
-  // into an indeterminate state. Never hide valid data behind "checking".
   setTimeout(() => repaintLastGood('顯示目前資料 · 背景更新中'), 1200);
 
   btn.addEventListener('click', () => {
@@ -67,13 +66,14 @@
     'tracker:gameday-current-team'
   ].forEach(name => window.addEventListener(name, () => finish()));
 
-  // If app.js completes a refresh without one of the auxiliary events, preserve
-  // the rendered data and return the refresh button to idle instead of hanging.
+  // Important: observer completion must never repaint. paint() itself writes
+  // #last-update, so repainting here creates a self-triggering MutationObserver
+  // loop that can freeze mobile Safari even though network requests succeeded.
   if (lastUpdate) {
     const observer = new MutationObserver(() => {
       const text = lastUpdate.textContent || '';
       if (/已更新|已完成|已確認|無資料變更|暫時無法更新|部分球員|賽程檢查失敗/.test(text)) {
-        finish(text);
+        finish(text, false);
       }
     });
     observer.observe(lastUpdate, { childList: true, characterData: true, subtree: true });
