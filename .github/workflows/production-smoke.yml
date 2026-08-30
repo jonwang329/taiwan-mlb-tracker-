@@ -25,11 +25,17 @@ jobs:
           observation='https://taiwan-mlb-observation-list.jonwang329.workers.dev'
           line='https://taiwan-mlb-line-notifier.jonwang329.workers.dev'
           expected_refresh_guard='refresh-terminal-state-fix.js?v=20260830-no-repaint-v3'
+          expected_japan_asset='npb-update.js?v=20260831-page-v2'
+          expected_today_asset='summary-extra-stats.js?v=20260831-today-events-v1'
+          expected_highlight_asset='today-highlight.js?v=20260831-warning-v1'
 
           html=''
-          for attempt in $(seq 1 18); do
+          for attempt in $(seq 1 24); do
             html=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}?smoke=${GITHUB_SHA}-${attempt}" || true)
-            if printf '%s' "$html" | grep -q "$expected_refresh_guard"; then
+            if printf '%s' "$html" | grep -q "$expected_refresh_guard" \
+              && printf '%s' "$html" | grep -q "$expected_japan_asset" \
+              && printf '%s' "$html" | grep -q "$expected_today_asset" \
+              && printf '%s' "$html" | grep -q "$expected_highlight_asset"; then
               break
             fi
             echo "Waiting for expected production dashboard version (attempt $attempt)"
@@ -38,13 +44,33 @@ jobs:
 
           test -n "$html" || { echo '::error::Production dashboard returned no HTML'; exit 1; }
           printf '%s' "$html" | grep -q "$expected_refresh_guard" || { echo '::error::Expected stable refresh guard is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -q "$expected_japan_asset" || { echo '::error::Japan page asset is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -q "$expected_today_asset" || { echo '::error::Today event asset is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -q "$expected_highlight_asset" || { echo '::error::Today warning highlight asset is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -q 'data-league-switch="mlb"' || { echo '::error::MLB/Japan switch is missing'; exit 1; }
+          printf '%s' "$html" | grep -q 'data-league-switch="japan"' || { echo '::error::Japan switch is missing'; exit 1; }
+          printf '%s' "$html" | grep -q 'data-league-page="japan"' || { echo '::error::Japan page container is missing'; exit 1; }
           if printf '%s' "$html" | grep -q 'gameday-universe-hotfix.js'; then
             echo '::error::Browser-wide Gameday universe scan is still loaded in production'
             exit 1
           fi
           printf '%s' "$html" | grep -q 'data/dashboard-snapshot.js' || { echo '::error::Central dashboard snapshot is not loaded'; exit 1; }
           printf '%s' "$html" | grep -q 'mlb-fetch-guard.js' || { echo '::error::MLB fetch guard is not loaded'; exit 1; }
-          echo 'Dashboard production HTML: OK'
+
+          japan_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}npb-update.js?verify=${GITHUB_SHA}")
+          printf '%s' "$japan_js" | grep -q '王彥程' || { echo '::error::王彥程 is missing from deployed Japan roster'; exit 1; }
+          printf '%s' "$japan_js" | grep -q '東北樂天金鷲' || { echo '::error::王彥程 Rakuten identity is missing'; exit 1; }
+          printf '%s' "$japan_js" | grep -q 'Asia/Tokyo' || { echo '::error::Japan page JST logic is missing'; exit 1; }
+          printf '%s' "$japan_js" | grep -q "setPage(location.hash==='#japan'?'japan':'mlb')" || { echo '::error::MLB default / Japan switch logic is missing'; exit 1; }
+
+          today_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}summary-extra-stats.js?verify=${GITHUB_SHA}")
+          printf '%s' "$today_js" | grep -q 'k>=2' || { echo '::error::2K Today warning rule is missing'; exit 1; }
+          printf '%s' "$today_js" | grep -q 'BB' || { echo '::error::Today BB exposure is missing'; exit 1; }
+
+          highlight_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}today-highlight.js?verify=${GITHUB_SHA}")
+          printf '%s' "$highlight_js" | grep -q 'k>=2' || { echo '::error::2K highlight rule is missing'; exit 1; }
+          printf '%s' "$highlight_js" | grep -q "tone='warning'" || { echo '::error::Warning highlight tone is missing'; exit 1; }
+          echo 'Dashboard production HTML + Japan/Today assets: OK'
 
           observation_health=$(curl -fsSL --max-time 20 "$observation/health")
           echo "$observation_health" | jq -e '.ok == true' >/dev/null
