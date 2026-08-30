@@ -24,11 +24,12 @@ jobs:
           dashboard='https://jonwang329.github.io/taiwan-mlb-tracker-/'
           observation='https://taiwan-mlb-observation-list.jonwang329.workers.dev'
           line='https://taiwan-mlb-line-notifier.jonwang329.workers.dev'
+          expected_refresh_guard='refresh-terminal-state-fix.js?v=20260830-observer-loop-fix-v2'
 
           html=''
           for attempt in $(seq 1 18); do
             html=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}?smoke=${GITHUB_SHA}-${attempt}" || true)
-            if printf '%s' "$html" | grep -q 'refresh-terminal-state-fix.js?v=20260829-airport-stability-v1'; then
+            if printf '%s' "$html" | grep -q "$expected_refresh_guard"; then
               break
             fi
             echo "Waiting for expected production dashboard version (attempt $attempt)"
@@ -36,7 +37,7 @@ jobs:
           done
 
           test -n "$html" || { echo '::error::Production dashboard returned no HTML'; exit 1; }
-          printf '%s' "$html" | grep -q 'refresh-terminal-state-fix.js?v=20260829-airport-stability-v1' || { echo '::error::Expected stable refresh guard is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -q "$expected_refresh_guard" || { echo '::error::Expected stable refresh guard is not deployed'; exit 1; }
           if printf '%s' "$html" | grep -q 'gameday-universe-hotfix.js'; then
             echo '::error::Browser-wide Gameday universe scan is still loaded in production'
             exit 1
