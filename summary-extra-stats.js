@@ -21,17 +21,21 @@
   function seasonRates(pitching,seasonStat){
     const denominator=pitching?seasonStat.battersFaced:seasonStat.plateAppearances;
     return [
-      ['K%',pctNumber(seasonStat.strikeOuts,denominator)],
-      ['BB%',pctNumber(seasonStat.baseOnBalls,denominator)]
+      {label:'K%',value:pctNumber(seasonStat.strikeOuts,denominator),benchmarkKey:pitching?'pitcherKPct':'hitterKPct',higherIsBetter:pitching},
+      {label:'BB%',value:pctNumber(seasonStat.baseOnBalls,denominator),benchmarkKey:pitching?'pitcherBBPct':'hitterBBPct',higherIsBetter:!pitching}
     ];
   }
   function currentLeagueId(result){
     return result?.today?.league?.id||result?.latest?.league?.id||result?.games?.[0]?.league?.id||null;
   }
-  function leagueContext(pair,pitching){
+  function benchmarkFor(pair){
     const leagueId=currentLeagueId(pair.result);
     const benchmark=leagueId&&window.LEAGUE_BENCHMARKS?.leagues?.[String(leagueId)];
-    if(!benchmark||num(benchmark.teams)<2)return null;
+    return benchmark&&num(benchmark.teams)>=2?benchmark:null;
+  }
+  function primaryLeagueContext(pair,pitching){
+    const benchmark=benchmarkFor(pair);
+    if(!benchmark)return null;
     const season=pair.result?.season||{};
     const playerValue=Number(pitching?season.era:season.avg);
     const leagueValue=Number(pitching?benchmark.era:benchmark.avg);
@@ -42,9 +46,20 @@
     if(magnitude>=2)text=`${advantage>0?'+':'-'}${Math.round(magnitude)}% vs LG`;
     return {text,leagueName:benchmark.leagueName||'league',leagueValue};
   }
-  function addLeagueContext(row,pair,pitching){
+  function rateLeagueContext(pair,rate){
+    const benchmark=benchmarkFor(pair);
+    const playerValue=Number(rate.value);
+    const leagueValue=Number(benchmark?.[rate.benchmarkKey]);
+    if(!benchmark||!Number.isFinite(playerValue)||!Number.isFinite(leagueValue)||leagueValue<=0)return null;
+    const delta=playerValue-leagueValue;
+    const meaningful=Math.abs(delta)>=0.5;
+    const better=rate.higherIsBetter?delta>0:delta<0;
+    const verdict=meaningful?(better?'better':'worse'):'≈ avg';
+    return {text:`LG ${leagueValue.toFixed(1)} · ${verdict}`,leagueName:benchmark.leagueName||'league',leagueValue};
+  }
+  function addPrimaryLeagueContext(row,pair,pitching){
     row.querySelectorAll('.league-context').forEach(el=>el.remove());
-    const context=leagueContext(pair,pitching);
+    const context=primaryLeagueContext(pair,pitching);
     if(!context)return;
     const primary=row.querySelector('.summary-stat:not(.summary-extra-stat)');
     if(!primary)return;
@@ -75,15 +90,16 @@
         row.querySelectorAll('.summary-extra-stat').forEach(el=>el.remove());
         addTodayEvent(row,pair,pitching);
         const seasonStat=pair.result?.season||{};
-        const values=seasonRates(pitching,seasonStat);
+        const rates=seasonRates(pitching,seasonStat);
         const arrow=row.querySelector(':scope > i');
-        values.forEach(([label,value])=>{
+        rates.forEach(rate=>{
           const span=document.createElement('span');
           span.className='summary-stat summary-extra-stat';
-          span.innerHTML=`<small>${label}</small><b>${value}</b>`;
+          const context=rateLeagueContext(pair,rate);
+          span.innerHTML=`<small>${rate.label}</small><b>${rate.value}</b>${context?`<em class="rate-league-context" title="${context.leagueName} average ${context.leagueValue.toFixed(1)}%">${context.text}</em>`:''}`;
           row.insertBefore(span,arrow||null);
         });
-        addLeagueContext(row,pair,pitching);
+        addPrimaryLeagueContext(row,pair,pitching);
       });
     });
   }
