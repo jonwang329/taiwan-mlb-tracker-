@@ -10,20 +10,25 @@
   <title>台灣旅外球員追蹤</title>
   <link rel="stylesheet" href="styles.css?v=20260812-systemfix">
   <link rel="stylesheet" href="refresh-button.css?v=20260819-v1">
-  <link rel="stylesheet" href="summary-extra-stats.css?v=20260830-stat-align-v10">
-  <link rel="stylesheet" href="today-highlight.css?v=20260824-reliever-v3">
+  <link rel="stylesheet" href="summary-extra-stats.css?v=20260831-today-events-v1">
+  <link rel="stylesheet" href="today-highlight.css?v=20260831-warning-v1">
   <link rel="stylesheet" href="smart-insight.css?v=20260814-insight-v2">
-  <link rel="stylesheet" href="npb-update.css?v=20260830-v1">
+  <link rel="stylesheet" href="npb-update.css?v=20260831-page-v2">
 </head>
 <body>
   <header class="site-header">
     <a class="brand" href="#today" aria-label="回到今日總覽"><b>TW</b><span>TAIWAN<br>BASEBALL TRACKER</span></a>
-    <div class="header-date"><strong id="today-date">—</strong><span>台灣時間</span></div>
+    <div class="header-date"><strong id="today-date">—</strong><span id="header-timezone">台灣時間</span></div>
     <button id="refresh-btn" type="button" aria-label="更新資料">↻ <span>更新</span></button>
   </header>
 
+  <nav class="league-switch" aria-label="聯盟頁面切換">
+    <button class="league-switch-btn active" type="button" data-league-switch="mlb" aria-pressed="true">MLB / MiLB</button>
+    <button class="league-switch-btn" type="button" data-league-switch="japan" aria-pressed="false">Japan</button>
+  </nav>
+
   <main>
-    <section class="scoreboard" id="today">
+    <section class="scoreboard" id="today" data-league-page="mlb">
       <div class="eyebrow">TODAY</div>
       <div class="scoreboard-title"><div><h1>今日台灣球員</h1><p>旅美球員即時戰況</p></div><strong id="live-status"><i></i> 即時資料</strong></div>
       <div class="score-strip" aria-label="今日數據摘要">
@@ -34,24 +39,33 @@
       </div>
     </section>
 
-    <section id="today-highlight" class="today-highlight" aria-live="polite" hidden></section>
+    <section id="today-highlight" class="today-highlight" aria-live="polite" data-league-page="mlb" hidden></section>
 
-    <section class="summary-section" aria-labelledby="summary-title">
+    <section class="summary-section" aria-labelledby="summary-title" data-league-page="mlb">
       <div class="section-title"><div><span>QUICK SCOREBOARD</span><h2 id="summary-title">球員即時總覽</h2></div><div class="summary-tools"><small id="last-update">讀取中…</small><button id="manage-players-btn" class="manage-players" type="button">Manage <b>＋</b></button></div></div>
       <div id="player-summary" class="summary-list" aria-live="polite"></div>
     </section>
 
-    <section class="npb-section" aria-labelledby="npb-title">
-      <div class="section-title"><div><span>NPB UPDATE</span><h2 id="npb-title">台灣旅日球員</h2></div></div>
+    <section class="npb-section" aria-labelledby="npb-title" data-league-page="japan" hidden>
+      <div class="npb-scoreboard">
+        <div class="eyebrow">TODAY · JAPAN</div>
+        <div class="npb-scoreboard-title"><div><h1>台灣旅日球員</h1><p>NPB / Farm · 日本時間 JST</p></div><strong>JAPAN</strong></div>
+        <div class="npb-score-strip">
+          <div><b id="npb-player-count">—</b><span>追蹤球員</span></div>
+          <div><b id="npb-pitcher-count">—</b><span>投手</span></div>
+          <div><b id="npb-hitter-count">—</b><span>野手</span></div>
+        </div>
+      </div>
+      <div class="section-title npb-section-title"><div><span>QUICK SCOREBOARD</span><h2 id="npb-title">Japan Player Overview</h2></div><small id="npb-date">—</small></div>
       <div id="npb-update" aria-live="polite"></div>
     </section>
 
-    <section class="details-section" id="players" aria-labelledby="details-title">
+    <section class="details-section" id="players" aria-labelledby="details-title" data-league-page="mlb">
       <div class="section-title"><div><span>PLAYER DETAILS</span><h2 id="details-title">個別球員詳細資料</h2></div></div>
       <div id="player-details" class="details-list"></div>
     </section>
   </main>
-  <footer>資料來源：MLB / MiLB Stats API；NPB 區：NPB 日本野球機構官方資料</footer>
+  <footer>資料來源：MLB / MiLB Stats API；Japan 頁：NPB 日本野球機構官方資料</footer>
 
   <div id="watchlist-modal" class="watchlist-modal" hidden>
     <section class="watchlist-sheet" role="dialog" aria-modal="true" aria-labelledby="watchlist-title">
@@ -83,12 +97,12 @@
   <script src="today-gamepk-date-guard.js?v=20260827-v1"></script>
   <script src="team-schedule-visual.js?v=20260822-v1"></script>
   <script src="refresh-terminal-state-fix.js?v=20260830-no-repaint-v3"></script>
-  <script src="summary-extra-stats.js?v=20260830-league-header-v9"></script>
+  <script src="summary-extra-stats.js?v=20260831-today-events-v1"></script>
   <script src="smart-insight.js?v=20260817-live-v2"></script>
   <script src="watchlist-fast-feedback.js?v=20260814-fast-v2"></script>
-  <script src="today-highlight.js?v=20260824-carousel-v3"></script>
+  <script src="today-highlight.js?v=20260831-warning-v1"></script>
   <script src="watchlist-state-sync.js?v=20260814-state-v2"></script>
   <script src="watchlist-manager.js?v=20260813-manage-v4"></script>
-  <script src="npb-update.js?v=20260830-v1"></script>
+  <script src="npb-update.js?v=20260831-page-v2"></script>
 </body>
 </html>

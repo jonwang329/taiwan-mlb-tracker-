@@ -4,7 +4,19 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 
 ## Production status
 
-2026-08-30 NPB case-study addition:
+2026-08-31 Japan-page + Today-event update:
+
+- Version marker: `2026-08-31 08:28 JST`.
+- MLB / MiLB remains the default page. A top `MLB / MiLB | Japan` switch keeps Japan players out of the旅美 Today / Quick Scoreboard layout.
+- Japan uses the same clean white product language with a subtle accent and `Asia/Tokyo` / JST display.
+- Japan tracking now includes seven players: 古林睿煬、孫易磊、林安可、張峻瑋、陳睦衡、徐若熙、王彥程.
+- 王彥程 is restored to the Japan page as an 東北樂天金鷲 pitcher. The official NPB roster page is authoritative; when official first-team stats do not exist, the UI shows roster/status information instead of inventing statistics.
+- Hitter `今日戰況` now exposes BB and K in addition to the existing H/AB, HR and RBI. A 2+ K day with no stronger positive event can appear as a restrained amber Today warning highlight.
+- The Today ticker also includes hitter strikeouts.
+- Japan page switching is isolated from MLB/MiLB refresh, observation-list, league-benchmark, Cloudflare state, and LINE production paths.
+- `summary-extra-stats.js` and `npb-update.js` are included in CI JavaScript syntax checks.
+
+2026-08-30 NPB case-study addition (historical baseline, superseded by the 2026-08-31 page split):
 
 - Added a lightweight `NPB UPDATE` section to the same Taiwan Baseball Tracker website; no separate Japan site.
 - Tracks six Taiwanese players in the NPB system: 古林睿煬、孫易磊、林安可、張峻瑋、陳睦衡、徐若熙.
