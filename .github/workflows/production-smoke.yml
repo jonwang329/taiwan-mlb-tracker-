@@ -24,7 +24,7 @@ jobs:
           dashboard='https://jonwang329.github.io/taiwan-mlb-tracker-/'
           observation='https://taiwan-mlb-observation-list.jonwang329.workers.dev'
           line='https://taiwan-mlb-line-notifier.jonwang329.workers.dev'
-          expected_refresh_guard='refresh-terminal-state-fix.js?v=20260830-observer-loop-fix-v2'
+          expected_refresh_guard='refresh-terminal-state-fix.js?v=20260830-no-repaint-v3'
 
           html=''
           for attempt in $(seq 1 18); do
