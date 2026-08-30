@@ -42,9 +42,7 @@
     const games=Array.isArray(result?.games)?result.games:[];
     const sameLevelGames=level?games.filter(game=>game?.level===level&&game?.league?.id):[];
     if(sameLevelGames.length)return sameLevelGames[0].league.id;
-    const todayLeague=result?.today?.league?.id;
-    const latestLeague=result?.latest?.league?.id;
-    return todayLeague||latestLeague||games.find(game=>game?.league?.id)?.league?.id||null;
+    return result?.today?.league?.id||result?.latest?.league?.id||games.find(game=>game?.league?.id)?.league?.id||null;
   }
   function leagueContext(pair,pitching){
     const leagueId=currentLeagueId(pair.result,pitching);
@@ -55,14 +53,15 @@
     const leagueValue=Number(pitching?benchmark.era:benchmark.avg);
     if(!Number.isFinite(playerValue)||!Number.isFinite(leagueValue)||leagueValue<=0)return null;
     const advantage=pitching?(leagueValue-playerValue)/leagueValue:(playerValue-leagueValue)/leagueValue;
-    return {
-      text:`${advantage>0?'+':''}${Math.round(advantage*100)}%`,
-      leagueName:benchmark.leagueName||'league',leagueValue,leagueId,playerValue
-    };
+    return {text:`${advantage>0?'+':''}${Math.round(advantage*100)}%`,leagueName:benchmark.leagueName||'league',leagueValue,leagueId};
   }
   function removeLegacyLeagueNotes(primary){
     if(!primary)return;
-    primary.querySelectorAll('.league-context,.rate-league-context').forEach(el=>el.remove());
+    primary.querySelectorAll('.league-context,.rate-league-context,.league-gap').forEach(el=>el.remove());
+    [...primary.childNodes].forEach(node=>{
+      if(node.nodeType!==Node.TEXT_NODE)return;
+      if(/vs\s*LG|·\s*LG|≈\s*LG/i.test(node.textContent||''))node.remove();
+    });
     [...primary.children].forEach(el=>{
       if(el.matches('small,b'))return;
       const text=(el.textContent||'').trim();
@@ -75,21 +74,17 @@
     removeLegacyLeagueNotes(primary);
     const context=leagueContext(pair,pitching);
     const note=document.createElement('em');
-    note.className='league-context league-gap';
+    note.className='league-context league-gap league-gap-top';
     note.textContent=context?.text||'—';
     if(context){
       note.title=`${context.leagueName} average: ${pitching?context.leagueValue.toFixed(2):context.leagueValue.toFixed(3)}`;
       note.dataset.leagueId=String(context.leagueId);
-    }else note.title='League benchmark unavailable';
-    primary.appendChild(note);
+    }
+    const value=primary.querySelector('b');
+    primary.insertBefore(note,value||null);
   }
-  function addLeagueKey(group){
-    const h3=group.querySelector('header h3');
-    if(!h3||h3.querySelector('.league-key'))return;
-    const key=document.createElement('small');
-    key.className='league-key';
-    key.textContent='LG% = VS LEAGUE';
-    h3.appendChild(key);
+  function removeLeagueKey(group){
+    group.querySelectorAll('.league-key').forEach(el=>el.remove());
   }
   function sync(){
     const pairs=dataPairs();
@@ -98,7 +93,7 @@
     document.querySelectorAll('.summary-group.hitting,.summary-group.pitching').forEach(group=>{
       const pitching=group.classList.contains('pitching');
       group.classList.add('with-extra-stats');
-      addLeagueKey(group);
+      removeLeagueKey(group);
       const extraLabels=['K%','BB%'];
       const labels=group.querySelector('.column-labels');
       if(labels){
