@@ -29,7 +29,9 @@ jobs:
           node --check observation-name-adapter.js
           node --check watchlist-fast-feedback.js
           node --check watchlist-manager.js
+          node --check summary-extra-stats.js
           node --check today-highlight.js
+          node --check npb-update.js
           node --check cloudflare/pitch-proxy-worker.js
           node --check cloudflare/observation-worker.js
           node --check cloudflare/line-worker.js
