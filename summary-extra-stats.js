@@ -33,6 +33,11 @@
     const benchmark=leagueId&&window.LEAGUE_BENCHMARKS?.leagues?.[String(leagueId)];
     return benchmark&&num(benchmark.teams)>=2?benchmark:null;
   }
+  function performanceLabel(advantage){
+    const magnitude=Math.abs(advantage)*100;
+    if(magnitude<2)return '≈ LG';
+    return `${advantage>0?'↑':'↓'} ${Math.round(magnitude)}% · LG`;
+  }
   function primaryLeagueContext(pair,pitching){
     const benchmark=benchmarkFor(pair);
     if(!benchmark)return null;
@@ -41,21 +46,15 @@
     const leagueValue=Number(pitching?benchmark.era:benchmark.avg);
     if(!Number.isFinite(playerValue)||!Number.isFinite(leagueValue)||leagueValue<=0)return null;
     const advantage=pitching?(leagueValue-playerValue)/leagueValue:(playerValue-leagueValue)/leagueValue;
-    const magnitude=Math.abs(advantage)*100;
-    let text='≈ LG';
-    if(magnitude>=2)text=`${advantage>0?'+':'-'}${Math.round(magnitude)}% vs LG`;
-    return {text,leagueName:benchmark.leagueName||'league',leagueValue};
+    return {text:performanceLabel(advantage),leagueName:benchmark.leagueName||'league',leagueValue};
   }
   function rateLeagueContext(pair,rate){
     const benchmark=benchmarkFor(pair);
     const playerValue=Number(rate.value);
     const leagueValue=Number(benchmark?.[rate.benchmarkKey]);
     if(!benchmark||!Number.isFinite(playerValue)||!Number.isFinite(leagueValue)||leagueValue<=0)return null;
-    const delta=playerValue-leagueValue;
-    const meaningful=Math.abs(delta)>=0.5;
-    const better=rate.higherIsBetter?delta>0:delta<0;
-    const verdict=meaningful?(better?'better':'worse'):'≈ avg';
-    return {text:`LG ${leagueValue.toFixed(1)} · ${verdict}`,leagueName:benchmark.leagueName||'league',leagueValue};
+    const advantage=rate.higherIsBetter?(playerValue-leagueValue)/leagueValue:(leagueValue-playerValue)/leagueValue;
+    return {text:performanceLabel(advantage),leagueName:benchmark.leagueName||'league',leagueValue};
   }
   function addPrimaryLeagueContext(row,pair,pitching){
     row.querySelectorAll('.league-context').forEach(el=>el.remove());
