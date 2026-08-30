@@ -74,17 +74,24 @@
     removeLegacyLeagueNotes(primary);
     const context=leagueContext(pair,pitching);
     const note=document.createElement('em');
-    note.className='league-context league-gap league-gap-top';
+    note.className='league-context league-gap';
     note.textContent=context?.text||'—';
     if(context){
       note.title=`${context.leagueName} average: ${pitching?context.leagueValue.toFixed(2):context.leagueValue.toFixed(3)}`;
       note.dataset.leagueId=String(context.leagueId);
     }
-    const value=primary.querySelector('b');
-    primary.insertBefore(note,value||null);
+    primary.appendChild(note);
   }
-  function removeLeagueKey(group){
-    group.querySelectorAll('.league-key').forEach(el=>el.remove());
+  function addLeagueKey(group){
+    const h3=group.querySelector('header h3');
+    if(!h3)return;
+    let key=h3.querySelector('.league-key');
+    if(!key){
+      key=document.createElement('small');
+      key.className='league-key';
+      h3.appendChild(key);
+    }
+    key.textContent='GRAY % = VS LEAGUE';
   }
   function sync(){
     const pairs=dataPairs();
@@ -93,7 +100,7 @@
     document.querySelectorAll('.summary-group.hitting,.summary-group.pitching').forEach(group=>{
       const pitching=group.classList.contains('pitching');
       group.classList.add('with-extra-stats');
-      removeLeagueKey(group);
+      addLeagueKey(group);
       const extraLabels=['K%','BB%'];
       const labels=group.querySelector('.column-labels');
       if(labels){
