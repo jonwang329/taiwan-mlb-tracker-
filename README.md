@@ -4,21 +4,30 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 
 ## Production status
 
-2026-08-31 Japan-page + Today-event update:
+2026-08-31 Asia-page update:
+
+- Replaces the Japan-only tab with a single `Asia` tab. No separate Korea tab is added.
+- MLB / MiLB remains the default page.
+- The Asia page contains two sections in one clean view: Japan (NPB / Farm) and Korea (KBO).
+- Japan and Korea both use UTC+9, so the Asia page uses a shared UTC+9 clock label while preserving the correct official source per country.
+- Japan tracking remains six players: 古林睿煬、孫易磊、林安可、張峻瑋、陳睦衡、徐若熙.
+- 王彥程 moves out of Japan and into Korea. KBO official data identifies him as 韓華鷹 Hanwha Eagles No.19, not KIA Tigers.
+- Current official KBO snapshot for 王彥程: 23 G, 10-5, ERA 3.52, 120 1/3 IP, 95 K, WHIP 1.45, 7 QS.
+- The Korea section is intentionally source-isolated from the MLB/MiLB stable core. V1 uses an official KBO snapshot; KBO automation can be added later as a separate update path after source reliability and schedule timing are validated.
+- Production smoke must verify the Asia switch, Hanwha identity, KBO snapshot, UTC+9 logic, and all previously protected MLB / Today / Cloudflare / LINE behavior.
+
+2026-08-31 Japan-page + Today-event update (historical baseline, superseded by the Asia-page structure above):
 
 - Version marker: `2026-08-31 08:28 JST`.
-- MLB / MiLB remains the default page. A top `MLB / MiLB | Japan` switch keeps Japan players out of the旅美 Today / Quick Scoreboard layout.
-- Japan uses the same clean white product language with a subtle accent and `Asia/Tokyo` / JST display.
-- Japan tracking now includes seven players: 古林睿煬、孫易磊、林安可、張峻瑋、陳睦衡、徐若熙、王彥程.
-- 王彥程 is restored to the Japan page as an 東北樂天金鷲 pitcher. The official NPB roster page is authoritative; when official first-team stats do not exist, the UI shows roster/status information instead of inventing statistics.
-- Hitter `今日戰況` now exposes BB and K in addition to the existing H/AB, HR and RBI. A 2+ K day with no stronger positive event can appear as a restrained amber Today warning highlight.
+- MLB / MiLB remains the default page.
+- Hitter `今日戰況` exposes BB and K in addition to H/AB, HR and RBI. A 2+ K day with no stronger positive event can appear as a restrained amber Today warning highlight.
 - The Today ticker also includes hitter strikeouts.
-- Japan page switching is isolated from MLB/MiLB refresh, observation-list, league-benchmark, Cloudflare state, and LINE production paths.
+- Asia/Japan presentation remains isolated from MLB/MiLB refresh, observation-list, league-benchmark, Cloudflare state, and LINE production paths.
 - `summary-extra-stats.js` and `npb-update.js` are included in CI JavaScript syntax checks.
 
-2026-08-30 NPB case-study addition (historical baseline, superseded by the 2026-08-31 page split):
+2026-08-30 NPB case-study addition (historical baseline):
 
-- Added a lightweight `NPB UPDATE` section to the same Taiwan Baseball Tracker website; no separate Japan site.
+- Added a lightweight NPB section to the same Taiwan Baseball Tracker website.
 - Tracks six Taiwanese players in the NPB system: 古林睿煬、孫易磊、林安可、張峻瑋、陳睦衡、徐若熙.
 - V1 is intentionally simple: team, level/status, four key season numbers, and one concise trend note per player.
 - Initial NPB data is a curated official NPB snapshot rather than a new browser-side scraping/API dependency.
