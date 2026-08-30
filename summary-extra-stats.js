@@ -8,15 +8,25 @@
   function addTodayEvent(row,pair,pitching){
     if(pitching)return;
     const gameStat=pair.result?.today?.stat||{};
+    const hits=num(gameStat.hits);
+    const hr=num(gameStat.homeRuns);
+    const bb=num(gameStat.baseOnBalls);
+    const k=num(gameStat.strikeOuts);
     const sb=num(gameStat.stolenBases);
     const cs=num(gameStat.caughtStealing);
-    if(!sb&&!cs)return;
     const today=row.querySelector('.summary-today');
     if(!today)return;
     let text=today.textContent||'';
+    if(bb&&!/\bBB\b/.test(text))text+=` · ${bb} BB`;
+    if(k&&!/\bK\b/.test(text))text+=` · ${k} K`;
     if(sb&&!/\bSB\b/.test(text))text+=` · ${sb} SB`;
     if(cs&&!/\bCS\b/.test(text))text+=` · ${cs} CS`;
     today.textContent=text.replace(/^\s+|\s+$/g,'');
+    today.classList.toggle('today-positive',hr>0||hits>=2||bb>=2||sb>0);
+    today.classList.toggle('today-warning',k>=2);
+    today.dataset.todayHits=String(hits);
+    today.dataset.todayHr=String(hr);
+    today.dataset.todayK=String(k);
   }
   function seasonRates(pitching,seasonStat){
     const denominator=pitching?seasonStat.battersFaced:seasonStat.plateAppearances;
