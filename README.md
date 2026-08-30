@@ -4,6 +4,16 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 
 ## Production status
 
+2026-08-30 NPB case-study addition:
+
+- Added a lightweight `NPB UPDATE` section to the same Taiwan Baseball Tracker website; no separate Japan site.
+- Tracks six Taiwanese players in the NPB system: 古林睿煬、孫易磊、林安可、張峻瑋、陳睦衡、徐若熙.
+- V1 is intentionally simple: team, level/status, four key season numbers, and one concise trend note per player.
+- Initial NPB data is a curated official NPB snapshot rather than a new browser-side scraping/API dependency.
+- NPB assets are isolated in `npb-update.css` and `npb-update.js`; the existing MLB/MiLB refresh, observation list, league benchmarks, and LINE production paths are not changed.
+- NPB remains part of the same phone/tablet/desktop product baseline; responsive layout may change density, but not meaning or feature logic.
+- `PROJECT_STATE.md` records the protected MLB stable core and the NPB delta acceptance checks.
+
 2026-08-30 refresh-hang fix:
 
 - Fixed a mobile freeze caused by `refresh-terminal-state-fix.js`: its `MutationObserver` watched `#last-update`, called `finish()`, then `finish()` repainted the dashboard via `paint()`, which wrote `#last-update` again and retriggered the observer indefinitely.
