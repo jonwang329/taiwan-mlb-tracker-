@@ -2,76 +2,80 @@
 
 ## Status
 - Project: Taiwan Baseball Tracker
-- Project OS status: 🟡 YELLOW — Japan-page / Today-event delta in validation
+- Project OS status: 🟡 YELLOW — isolated KBO / critical-MLB delta in validation
 - Canonical repository: `jonwang329/taiwan-mlb-tracker-`
-- Golden baseline: existing MLB/MiLB production behavior prior to Japan-page split
-- Current delta version: `2026-08-31 08:28 JST — Japan page + Today event exposure`
+- Golden baseline: current production MLB/MiLB + Asia page
+- Current delta version: `2026-08-31 — KBO refresh + critical MLB comparison`
 
 ## Protected MLB Stable Core
-- Existing MLB / MiLB Today view and Quick Scoreboard
+These paths are protected and must not be redesigned for this delta:
+- MLB / MiLB Today view and Quick Scoreboard
+- `app.js` refresh / data collection core
 - Observation list / Manage flow
 - Cloudflare-backed observation state
-- MLB/MiLB refresh logic and freshness protections
 - LINE production schedule and notification flow
-- League comparison / benchmark behavior
-- Mobile / tablet / desktop shared product baseline
+- Existing league benchmark generation and same-league Quick Scoreboard comparison
+- Mobile / tablet / desktop product baseline
 
 ## Approved Delta — 2026-08-31
-Purpose: keep the MLB/MiLB experience clean while giving Japan players a parallel page with the same product language.
+This delta must remain small, isolated and easy to roll back.
 
-### Today Game / Quick Scoreboard
-- Hitters must expose meaningful same-day events directly in `今日戰況`.
-- Existing H/AB, HR and RBI remain visible.
-- Add BB and K when present; do not hide a 2K day behind season-only statistics.
-- `2+ K` with no stronger positive event becomes a restrained warning highlight, not a harsh red failure label.
-- Positive hitter signals such as HR, multi-hit, multiple walks or steals remain visually stronger but controlled.
-- Pitcher Today format remains IP / H / ER / BB / K.
+### Asia / KBO
+- Keep one `Asia` page. Do not add a separate Korea tab.
+- Japan remains six tracked players and keeps the existing NPB presentation.
+- Korea currently contains 王彥程 only.
+- 王彥程 official identity: 韓華鷹 Hanwha Eagles, KBO first team, No.19.
+- Official KBO 2026 snapshot as of 2026-08-31: 23 G, 10-5, ERA 3.52, 120 1/3 IP, 95 K, WHIP 1.45, 7 QS.
+- KBO official page also lists ERA rank No.4 at this snapshot.
+- Latest official game shown: 08/18 vs KIA, 5 IP, 7 H, 3 ER, 2 BB, 3 K.
+- KBO remains a curated official snapshot in `npb-update.js`. Do not add a browser scraper or couple it to MLB refresh logic in this delta.
 
-### League-page architecture
-- Default page remains `MLB / MiLB`.
-- Top switch: `MLB / MiLB | Japan`.
-- Japan players do not render inside the MLB Today, Quick Scoreboard, or Player Details sections.
-- Japan page uses the same clean white product language with only a subtle Japan accent.
-- Japan page uses `Asia/Tokyo` / JST display; MLB/MiLB page uses `Asia/Taipei`.
-- The page switch must not modify MLB/MiLB refresh, observation-list, league-benchmark, or LINE logic.
+### Critical MLB comparison
+Only two MLB players receive the extra `MLB 全聯盟比較` block:
+1. 李灝宇 Hao-Yu Lee — MLB hitter
+2. 鄧愷威 Kai-Wei Teng — MLB pitcher
 
-### Japan tracked players
-1. 古林睿煬 — 北海道日本火腿鬥士 — pitcher
-2. 孫易磊 — 北海道日本火腿鬥士 — pitcher
-3. 林安可 — 埼玉西武獅 — outfielder
-4. 張峻瑋 — 福岡軟銀鷹 — pitcher
-5. 陳睦衡 — 歐力士猛牛 — pitcher
-6. 徐若熙 — 福岡軟銀鷹 — pitcher
-7. 王彥程 — 東北樂天金鷲 — pitcher, roster No. 017
+The comparison reads the existing daily MLB league benchmark cache and combines AL + NL into a simple MLB-wide reference. It does not create a new data pipeline.
 
-### Wang Yen-Cheng / 王彥程 rule
-- 王彥程 belongs on the Japan page, not the MLB/MiLB page.
-- NPB official roster is authoritative for Japan identity/status.
-- Do not invent NPB first-team statistics. If the official page shows no NPB first-team experience, display roster/status information instead.
+Lee metrics:
+- AVG
+- K%
+- BB%
+- BB/K
 
-## Data strategy
-The Japan page currently uses a curated official NPB snapshot. It remains isolated from the MLB/MiLB Single Source of Truth and does not introduce a browser-side scraping dependency into the stable MLB production path.
+Teng metrics:
+- ERA
+- WHIP
+- K%
+- BB%
 
-Future Japan automation may be added only after validating:
-- official source reliability
-- first-team / farm coverage
-- update timing
-- stable identifiers
-- no regression risk to MLB data paths
+The signed percentage is a relative gap versus MLB-wide average, not a percentile or ranking. Better/worse direction is metric-aware.
 
-## Cross-device requirement
-Both pages are part of the same product baseline across iPhone, iPad/tablet, and desktop. Layout may respond to screen size; data/content/meaning must remain consistent.
+### Refresh status consistency
+- Do not change `app.js` or the refresh engine in this delta.
+- Keep the last-good player data visible during confirmation.
+- `refresh-status-consistency.js` only clarifies the status line after schedule confirmation: schedule confirmation is not the same as every player stat changing.
+- Never clear or partially repaint the dashboard just to show a checking state.
+
+## Project OS guardrail
+For this delta:
+- No new Korea page
+- No new KBO browser scraper
+- No modification to MLB core data collection
+- No modification to Cloudflare / LINE / watchlist logic
+- New behavior lives in isolated assets and can be removed without touching stable core
 
 ## Acceptance checks
-- MLB/MiLB is the default page and existing core sections still render
-- Japan switch hides MLB sections rather than mixing two formats
-- Japan switch shows seven Japan players including 王彥程
-- Japan date/time uses JST; MLB date/time uses Taiwan time
-- Hitter Today line exposes BB / K when present
-- A 2K hitter day can appear as a restrained Today warning highlight
-- No regression to refresh, Manage, observation list, league benchmarks, or LINE production flow
-- Mobile view keeps the switch and Japan cards readable
+- MLB/MiLB remains the default page
+- Asia page still shows Japan and Korea in one view
+- 王彥程 shows Hanwha No.19 and the 2026-08-31 KBO snapshot
+- Japan cards remain unchanged in structure
+- 李灝宇 card shows MLB-wide AVG / K% / BB% / BB-K comparison
+- 鄧愷威 card shows MLB-wide ERA / WHIP / K% / BB% comparison
+- No other player card gets the critical MLB comparison block
+- Refresh confirmation wording does not imply that unchanged player data is newly refreshed
+- Existing Today, Manage, observation list, league benchmarks, Cloudflare and LINE behavior still passes production smoke
 - Production site must be verified before READY TO TEST
 
 ## Next safe action
-Run branch validation, review the diff, merge only after checks pass, then verify the deployed public site. Do not announce READY TO TEST until production verification passes.
+Run CI, review the isolated diff, merge only after validation succeeds, then wait for GitHub Pages and production smoke. Do not announce READY TO TEST until the deployed public site passes.
