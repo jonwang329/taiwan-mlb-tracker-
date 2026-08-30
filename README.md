@@ -4,6 +4,18 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 
 ## Production status
 
+2026-08-31 KBO refresh + critical MLB comparison:
+
+- Project OS guardrail: this is an isolated delta. `app.js`, MLB/MiLB collection, Cloudflare, LINE and observation-list logic are not redesigned.
+- Asia remains one page with Japan + Korea. No separate Korea tab.
+- 王彥程 is shown as 韓華鷹 Hanwha Eagles No.19 using the official KBO snapshot: 23 G, 10-5, ERA 3.52, 120 1/3 IP, 95 K, WHIP 1.45, 7 QS; KBO official summary currently lists ERA rank No.4.
+- Latest official game shown on his card: 08/18 vs KIA — 5 IP, 7 H, 3 ER, 2 BB, 3 K.
+- Korea remains a curated official KBO snapshot in the isolated Asia module. No browser-side KBO scraper is added in this change.
+- Only 李灝宇 (701678) and 鄧愷威 (678906) receive a new `MLB 全聯盟比較` section in their Player Cards.
+- 李灝宇 comparison: AVG / K% / BB% / BB-K. 鄧愷威 comparison: ERA / WHIP / K% / BB%.
+- The MLB-wide reference is derived from the existing AL + NL daily benchmark cache; it is not a new data pipeline and does not affect other players.
+- `refresh-status-consistency.js` clarifies that official schedule confirmation can coexist with the current last-good player snapshot. It does not repaint the dashboard or alter the refresh engine.
+
 2026-08-31 Asia-page update:
 
 - Replaces the Japan-only tab with a single `Asia` tab. No separate Korea tab is added.
@@ -12,9 +24,7 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 - Japan and Korea both use UTC+9, so the Asia page uses a shared UTC+9 clock label while preserving the correct official source per country.
 - Japan tracking remains six players: 古林睿煬、孫易磊、林安可、張峻瑋、陳睦衡、徐若熙.
 - 王彥程 moves out of Japan and into Korea. KBO official data identifies him as 韓華鷹 Hanwha Eagles No.19, not KIA Tigers.
-- Current official KBO snapshot for 王彥程: 23 G, 10-5, ERA 3.52, 120 1/3 IP, 95 K, WHIP 1.45, 7 QS.
-- The Korea section is intentionally source-isolated from the MLB/MiLB stable core. V1 uses an official KBO snapshot; KBO automation can be added later as a separate update path after source reliability and schedule timing are validated.
-- Production smoke must verify the Asia switch, Hanwha identity, KBO snapshot, UTC+9 logic, and all previously protected MLB / Today / Cloudflare / LINE behavior.
+- The Korea section is intentionally source-isolated from the MLB/MiLB stable core.
 
 2026-08-31 Japan-page + Today-event update (historical baseline, superseded by the Asia-page structure above):
 
@@ -23,17 +33,6 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 - Hitter `今日戰況` exposes BB and K in addition to H/AB, HR and RBI. A 2+ K day with no stronger positive event can appear as a restrained amber Today warning highlight.
 - The Today ticker also includes hitter strikeouts.
 - Asia/Japan presentation remains isolated from MLB/MiLB refresh, observation-list, league-benchmark, Cloudflare state, and LINE production paths.
-- `summary-extra-stats.js` and `npb-update.js` are included in CI JavaScript syntax checks.
-
-2026-08-30 NPB case-study addition (historical baseline):
-
-- Added a lightweight NPB section to the same Taiwan Baseball Tracker website.
-- Tracks six Taiwanese players in the NPB system: 古林睿煬、孫易磊、林安可、張峻瑋、陳睦衡、徐若熙.
-- V1 is intentionally simple: team, level/status, four key season numbers, and one concise trend note per player.
-- Initial NPB data is a curated official NPB snapshot rather than a new browser-side scraping/API dependency.
-- NPB assets are isolated in `npb-update.css` and `npb-update.js`; the existing MLB/MiLB refresh, observation list, league benchmarks, and LINE production paths are not changed.
-- NPB remains part of the same phone/tablet/desktop product baseline; responsive layout may change density, but not meaning or feature logic.
-- `PROJECT_STATE.md` records the protected MLB stable core and the NPB delta acceptance checks.
 
 2026-08-30 refresh-hang fix:
 
@@ -46,14 +45,11 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 - Quick Scoreboard keeps Today + season snapshot compact: hitters show AVG / OPS / K% / BB%; pitchers show ERA / WHIP / K% / BB%.
 - League comparison appears only under the primary AVG/ERA number. The group header explains `LG% = VS LEAGUE` once; each player row then shows only a compact signed percentage such as `+12%`, `-44%`, or `—`.
 - Positive means better performance versus the player's same-league environment; negative means worse. For ERA, lower is better, so the sign is performance-aware rather than raw numeric direction.
-- Every row reserves the same league-gap position. If no trustworthy same-league benchmark can be resolved, the row shows `—` instead of silently omitting the field.
-- League context is not a ranking. It compares the player's current season stat with the aggregate environment of the same MLB/MiLB league.
 - `data/league-benchmarks.js` is generated by the `Update league benchmarks` GitHub Action from official MLB/MiLB Stats API team-season aggregates. It runs once daily and is cached; the browser never recalculates the whole league on page load.
 
 2026-08-29 stability recovery:
 
 - Keep the last-good dashboard visible while background reconciliation runs; the UI must not become an all-page indefinite "checking" state.
-- The browser-wide `gameday-universe-hotfix.js` scan is disabled from production startup because it can create excessive client-side work. Authoritative scheduled snapshot refresh remains the primary full-roster data path.
 - Cloudflare is the only production LINE scheduler. One Cloudflare cron covers 07:00, 08:00, 09:00 and 12:00 Asia/Taipei. GitHub `LINE daily tracker updates` is manual fallback/testing only and must not have a `schedule:` trigger.
 - Required workflow after changes: UNDERSTAND → CHECK → FIX → TEST → DEPLOY → TEST AGAIN → README / AGENTS verification → traffic-light status → READY TO TEST.
 
@@ -65,35 +61,13 @@ A small Cloudflare Worker (`cloudflare/observation-worker.js`) exposes a public 
 
 During initial setup only, `tracked-players.json` remains as a safe fallback and as the seed list used when the KV namespace has no `players` entry yet.
 
-The website's **Manage** control searches MLB / MiLB players and prepares an Add/Remove GitHub approval request. Only requests opened by the repository owner are accepted by the `Observation list manager` workflow. That workflow validates the MLB player ID and calls the protected Cloudflare Worker API. Friends can view the site and search players, but cannot change the production list through the automation.
-
-## Cloudflare deployment
-
-The workflow **Deploy observation Worker** deploys the observation Worker and the LINE notifier, connects them to the existing KV namespace named `taiwan-mlb-observation-list`, installs required secrets, verifies worker health, and configures the dashboard API URL.
-
-The production LINE notifier is `cloudflare/line-worker-single-cron.js`, which wraps the Flex notifier and owns one Cloudflare Free-plan cron:
-
-`0 0,1,4,23 * * *` UTC
-
-The wrapper maps that cron to the four Taiwan notification slots and keeps delivery de-duplication state in KV.
-
-Required GitHub Actions secrets include Cloudflare credentials and LINE credentials. No Cloudflare token, LINE token, or observation admin token is stored in the repository or browser.
-
 ## LINE notifications
 
 **Cloudflare is the sole production LINE scheduler.** Production notification times are:
 
-- 07:00 Asia/Taipei → `0 23 * * *` UTC (previous UTC day)
-- 08:00 Asia/Taipei → `0 0 * * *` UTC
-- 09:00 Asia/Taipei → `0 1 * * *` UTC
-- 12:00 Asia/Taipei → `0 4 * * *` UTC
+- 07:00 Asia/Taipei
+- 08:00 Asia/Taipei
+- 09:00 Asia/Taipei
+- 12:00 Asia/Taipei
 
-The 07:00 run sends a morning summary. The 08:00 and 09:00 slots report the current MLB-visible state through the Cloudflare notifier. The noon run sends the final daily summary.
-
-GitHub Actions **LINE daily tracker updates** is **manual fallback/testing only**. It has `workflow_dispatch` but no production cron. Manual troubleshooting is available from **Actions → LINE daily tracker updates → Run workflow**. Every manual message begins with `🧪 TEST — Taiwan MLB Tracker` and does not overwrite the production comparison snapshot.
-
-This separation is intentional: do not enable production schedules in both GitHub and Cloudflare, because two schedulers can create duplicate or conflicting notifications.
-
-## Report content
-
-LINE reports include game state (`FINAL`, `LIVE / IN PROGRESS`, `NOT STARTED`, or `NO GAME`), appearance/performance, season statistics, player/roster status, recent transaction information, and a short observation.
+GitHub Actions **LINE daily tracker updates** is manual fallback/testing only.
