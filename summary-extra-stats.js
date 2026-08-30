@@ -40,8 +40,11 @@
   function currentLeagueId(result,pitching){
     const level=activeLevel(result,pitching);
     const games=Array.isArray(result?.games)?result.games:[];
-    const sameLevelGame=level&&games.find(game=>game?.level===level&&game?.league?.id);
-    return sameLevelGame?.league?.id||result?.today?.league?.id||result?.latest?.league?.id||games.find(game=>game?.league?.id)?.league?.id||null;
+    const sameLevelGames=level?games.filter(game=>game?.level===level&&game?.league?.id):[];
+    if(sameLevelGames.length)return sameLevelGames[0].league.id;
+    const todayLeague=result?.today?.league?.id;
+    const latestLeague=result?.latest?.league?.id;
+    return todayLeague||latestLeague||games.find(game=>game?.league?.id)?.league?.id||null;
   }
   function leagueContext(pair,pitching){
     const leagueId=currentLeagueId(pair.result,pitching);
@@ -52,23 +55,41 @@
     const leagueValue=Number(pitching?benchmark.era:benchmark.avg);
     if(!Number.isFinite(playerValue)||!Number.isFinite(leagueValue)||leagueValue<=0)return null;
     const advantage=pitching?(leagueValue-playerValue)/leagueValue:(playerValue-leagueValue)/leagueValue;
-    const magnitude=Math.abs(advantage)*100;
-    let text='≈ LG';
-    if(magnitude>=2)text=`${advantage>0?'↑':'↓'} ${Math.round(magnitude)}% · LG`;
-    return {text,leagueName:benchmark.leagueName||'league',leagueValue,leagueId,playerValue};
+    return {
+      text:`${advantage>0?'+':''}${Math.round(advantage*100)}%`,
+      leagueName:benchmark.leagueName||'league',leagueValue,leagueId,playerValue
+    };
+  }
+  function removeLegacyLeagueNotes(primary){
+    if(!primary)return;
+    primary.querySelectorAll('.league-context,.rate-league-context').forEach(el=>el.remove());
+    [...primary.children].forEach(el=>{
+      if(el.matches('small,b'))return;
+      const text=(el.textContent||'').trim();
+      if(/vs\s*LG|·\s*LG|≈\s*LG/i.test(text))el.remove();
+    });
   }
   function addLeagueContext(row,pair,pitching){
-    row.querySelectorAll('.league-context').forEach(el=>el.remove());
-    const context=leagueContext(pair,pitching);
-    if(!context)return;
     const primary=row.querySelector('.summary-stat:not(.summary-extra-stat)');
     if(!primary)return;
+    removeLegacyLeagueNotes(primary);
+    const context=leagueContext(pair,pitching);
     const note=document.createElement('em');
-    note.className='league-context';
-    note.textContent=context.text;
-    note.title=`${context.leagueName} average: ${pitching?context.leagueValue.toFixed(2):context.leagueValue.toFixed(3)}`;
-    note.dataset.leagueId=String(context.leagueId);
+    note.className='league-context league-gap';
+    note.textContent=context?.text||'—';
+    if(context){
+      note.title=`${context.leagueName} average: ${pitching?context.leagueValue.toFixed(2):context.leagueValue.toFixed(3)}`;
+      note.dataset.leagueId=String(context.leagueId);
+    }else note.title='League benchmark unavailable';
     primary.appendChild(note);
+  }
+  function addLeagueKey(group){
+    const h3=group.querySelector('header h3');
+    if(!h3||h3.querySelector('.league-key'))return;
+    const key=document.createElement('small');
+    key.className='league-key';
+    key.textContent='LG% = VS LEAGUE';
+    h3.appendChild(key);
   }
   function sync(){
     const pairs=dataPairs();
@@ -77,6 +98,7 @@
     document.querySelectorAll('.summary-group.hitting,.summary-group.pitching').forEach(group=>{
       const pitching=group.classList.contains('pitching');
       group.classList.add('with-extra-stats');
+      addLeagueKey(group);
       const extraLabels=['K%','BB%'];
       const labels=group.querySelector('.column-labels');
       if(labels){
