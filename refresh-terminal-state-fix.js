@@ -12,30 +12,17 @@
     timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false
   }).format(new Date(ts));
 
-  function repaintLastGood(message = '顯示目前資料 · 背景更新中') {
-    try {
-      if (typeof paint === 'function' && typeof lastResults !== 'undefined' && Array.isArray(lastResults) && lastResults.length) {
-        paint(lastResults, message);
-        return true;
-      }
-    } catch (error) {
-      console.warn('Could not repaint last-good dashboard', error);
-    }
-    return false;
-  }
-
-  function finish(message = `已完成檢查 · ${formatTime(Date.now())}`, repaint = true) {
+  // This helper only owns refresh-button state. It must never call paint().
+  // app.js owns full-dashboard rendering; live-refresh.js owns targeted live updates.
+  // Keeping those responsibilities separate prevents repeated full DOM rebuilds on iPhone Safari.
+  function finish(message = `已完成檢查 · ${formatTime(Date.now())}`) {
     clearTimeout(finishTimer);
     finishTimer = null;
     btn.disabled = false;
     btn.removeAttribute('aria-busy');
     btn.classList.remove('is-refreshing', 'refreshing', 'loading');
     if (label) label.textContent = idleLabel;
-    if (repaint) {
-      if (!repaintLastGood(message) && lastUpdate && lastUpdate.textContent !== message) lastUpdate.textContent = message;
-    } else if (lastUpdate && lastUpdate.textContent !== message) {
-      lastUpdate.textContent = message;
-    }
+    if (lastUpdate && lastUpdate.textContent !== message) lastUpdate.textContent = message;
   }
 
   function armFailSafe() {
@@ -45,17 +32,7 @@
     }, MAX_WAIT_MS);
   }
 
-  setTimeout(() => {
-    try {
-      if (typeof initialConfirmationPending !== 'undefined') initialConfirmationPending = false;
-    } catch {}
-    repaintLastGood('顯示目前資料 · 背景更新中');
-  }, 0);
-
-  setTimeout(() => repaintLastGood('顯示目前資料 · 背景更新中'), 1200);
-
   btn.addEventListener('click', () => {
-    repaintLastGood('顯示目前資料 · 正在更新');
     armFailSafe();
   }, true);
 
@@ -66,14 +43,11 @@
     'tracker:gameday-current-team'
   ].forEach(name => window.addEventListener(name, () => finish()));
 
-  // Important: observer completion must never repaint. paint() itself writes
-  // #last-update, so repainting here creates a self-triggering MutationObserver
-  // loop that can freeze mobile Safari even though network requests succeeded.
   if (lastUpdate) {
     const observer = new MutationObserver(() => {
       const text = lastUpdate.textContent || '';
       if (/已更新|已完成|已確認|無資料變更|暫時無法更新|部分球員|賽程檢查失敗/.test(text)) {
-        finish(text, false);
+        finish(text);
       }
     });
     observer.observe(lastUpdate, { childList: true, characterData: true, subtree: true });
