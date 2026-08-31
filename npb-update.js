@@ -21,19 +21,24 @@
     if(date)date.textContent=new Intl.DateTimeFormat('zh-TW',{timeZone:page==='asia'?'Asia/Tokyo':'Asia/Taipei',month:'numeric',day:'numeric',weekday:'short'}).format(new Date());
     if(zone)zone.textContent=page==='asia'?'Japan / Korea · UTC+9':'台灣時間';
   };
+  const returnButton=document.querySelector('.league-switch-return');
+  const toggleButton=document.querySelector('.league-switch-japan');
+  if(returnButton) returnButton.remove();
   const setPage=page=>{
     const target=page==='asia'?'asia':'mlb';
     document.querySelectorAll('[data-league-page]').forEach(section=>{section.hidden=section.dataset.leaguePage!==target;});
-    document.querySelectorAll('[data-league-switch]').forEach(button=>{
-      const active=button.dataset.leagueSwitch===target;
-      button.classList.toggle('active',active);
-      button.setAttribute('aria-pressed',active?'true':'false');
-    });
     document.body.dataset.leagueView=target;
     setHeaderClock(target);
+    if(toggleButton){
+      toggleButton.dataset.leagueSwitch=target==='asia'?'mlb':'asia';
+      toggleButton.classList.toggle('league-switch-japan',target==='mlb');
+      toggleButton.classList.toggle('league-switch-return',target==='asia');
+      toggleButton.innerHTML=target==='asia'?'← MLB / MiLB':'<span aria-hidden="true">🇯🇵</span> Japan <span aria-hidden="true">→</span>';
+      toggleButton.setAttribute('aria-pressed','false');
+    }
     try{history.replaceState(null,'',target==='asia'?'#asia':'#today');}catch{}
   };
-  document.querySelectorAll('[data-league-switch]').forEach(button=>button.addEventListener('click',()=>setPage(button.dataset.leagueSwitch)));
+  if(toggleButton)toggleButton.addEventListener('click',()=>setPage(toggleButton.dataset.leagueSwitch));
   root.innerHTML=`<section class="asia-country"><div class="npb-meta"><span class="npb-badge">JAPAN · NPB / FARM · ${japanPlayers.length} 位</span><span>官方 snapshot：${updated} · JST</span></div><div class="npb-list">${japanPlayers.map(card).join('')}</div></section><section class="asia-country korea-country"><div class="npb-meta"><span class="npb-badge korea-badge">KOREA · KBO · ${koreaPlayers.length} 位</span><span>官方 snapshot：${updated} · KST</span></div><div class="npb-list">${koreaPlayers.map(card).join('')}</div></section><p class="npb-disclaimer">Asia 頁把 Japan 與 Korea 放在同一個乾淨頁面，不增加額外分頁。日本與韓國同為 UTC+9；兩邊各自使用 NPB / KBO 官方資料。</p>`;
   document.getElementById('asia-player-count').textContent=String(japanPlayers.length+koreaPlayers.length);
   document.getElementById('asia-japan-count').textContent=String(japanPlayers.length);
