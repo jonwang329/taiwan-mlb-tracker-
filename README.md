@@ -2,6 +2,20 @@
 
 A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats API data, with LINE notifications and a shared Cloudflare KV observation list.
 
+## Project OS — mandatory version control gate
+
+This rule is mandatory before every user test and applies to every release, hotfix, data refresh, and UI change.
+
+- Every testable release must expose or record **Version + Date + exact Time + commit SHA**.
+- Keep one explicit **LOCKED STABLE BASELINE**. Never silently replace it with an older, alternate, or partially refreshed UI.
+- Before any change, identify the current production version and compare it with the locked baseline.
+- After any change, run regression checks for previously fixed critical behavior, not only the new delta.
+- Data/snapshot refresh jobs must not alter UI structure, navigation, or stable product behavior unless the change explicitly requires it.
+- If production differs from source, first determine whether the cause is an old deployment, alternate UI path, cache, branch mismatch, snapshot overwrite, or mixed assets. Do not ask the user to diagnose this.
+- **READY TO TEST is forbidden** until production itself has been opened and verified against the expected version and locked baseline.
+- If any prior fixed behavior regresses, status is **FAIL / NOT READY TO TEST**.
+- When returning to the project in a later session, start from the latest locked stable baseline, never from a guessed or merely recent commit.
+
 ## Production status
 
 2026-08-31 08:59 JST Japan-switch UI refinement:
