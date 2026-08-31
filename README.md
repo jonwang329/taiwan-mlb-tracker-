@@ -11,6 +11,14 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 - The Asia page shows a small `← MLB / MiLB` return control in the same location.
 - This is UI-only. `npb-update.js`, MLB/MiLB data collection, refresh logic, Cloudflare, LINE, watchlist and Asia player data are unchanged.
 
+## Stability guardrails
+
+- Production must have exactly one dominant MLB / MiLB entry point. Do not render two equal-weight MLB / Japan (or MLB / Asia) circles, pills, cards, or primary buttons.
+- A player row/card must never simultaneously show a pending/confirmation state and already-updated game results for the same game. Rendering must resolve to one authoritative state only.
+- Data refresh/snapshot jobs may update data artifacts only; they must not rewrite UI hierarchy or restore superseded navigation.
+- Before `READY TO TEST`, verify production itself (not only source code) for: current release identity, MLB/Japan hierarchy, and status/result consistency.
+- Any production mismatch against these guardrails is a release FAIL and must not be sent to the user for testing.
+
 2026-08-31 KBO refresh + critical MLB comparison:
 
 - Project OS guardrail: this is an isolated delta. `app.js`, MLB/MiLB collection, Cloudflare, LINE and observation-list logic are not redesigned.
