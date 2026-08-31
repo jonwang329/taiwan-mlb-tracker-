@@ -5,18 +5,36 @@
     if(typeof players==='undefined'||typeof lastResults==='undefined'||!Array.isArray(players)||!Array.isArray(lastResults))return [];
     return players.map((player,index)=>({player,result:lastResults[index]}));
   }
+  function confirmedTodayLine(pair,pitching){
+    const today=pair.result?.today;
+    const stat=today?.stat||{};
+    if(!today)return null;
+    if(pitching){
+      const appeared=num(stat.battersFaced)>0||num(stat.pitchesThrown)>0||num(stat.inningsPitched)>0;
+      if(!appeared&&!today.onGame)return null;
+      return `${stat.inningsPitched??'0'} IP · ${stat.hits??0} H · ${stat.earnedRuns??0} ER · ${stat.baseOnBalls??0} BB · ${stat.strikeOuts??0} K${stat.battersFaced!=null?` · ${stat.battersFaced} BF`:''}${today.live?' · LIVE':''}`;
+    }
+    const appeared=num(stat.plateAppearances)>0||num(stat.atBats)>0||num(stat.runs)>0||num(stat.baseOnBalls)>0||num(stat.hitByPitch)>0||num(stat.sacFlies)>0||num(stat.sacBunts)>0;
+    if(!appeared&&!today.onGame)return null;
+    return `${stat.hits??0}-${stat.atBats??0}${stat.plateAppearances!=null?` · ${stat.plateAppearances} PA`:''}${num(stat.homeRuns)?` · ${stat.homeRuns} HR`:''}${num(stat.rbi)?` · ${stat.rbi} RBI`:''}${today.live?' · LIVE':''}`;
+  }
   function addTodayEvent(row,pair,pitching){
-    if(pitching)return;
     const gameStat=pair.result?.today?.stat||{};
+    const today=row.querySelector('.summary-today');
+    if(!today)return;
+    let text=today.textContent||'';
+    const confirmedLine=confirmedTodayLine(pair,pitching);
+    if(confirmedLine&&/正在確認今日出賽/.test(text))text=confirmedLine;
+    if(pitching){
+      today.textContent=text.replace(/^\s+|\s+$/g,'');
+      return;
+    }
     const hits=num(gameStat.hits);
     const hr=num(gameStat.homeRuns);
     const bb=num(gameStat.baseOnBalls);
     const k=num(gameStat.strikeOuts);
     const sb=num(gameStat.stolenBases);
     const cs=num(gameStat.caughtStealing);
-    const today=row.querySelector('.summary-today');
-    if(!today)return;
-    let text=today.textContent||'';
     if(bb&&!/\bBB\b/.test(text))text+=` · ${bb} BB`;
     if(k&&!/\bK\b/.test(text))text+=` · ${k} K`;
     if(sb&&!/\bSB\b/.test(text))text+=` · ${sb} SB`;
