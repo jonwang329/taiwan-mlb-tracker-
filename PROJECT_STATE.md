@@ -2,80 +2,71 @@
 
 ## Status
 - Project: Taiwan Baseball Tracker
-- Project OS status: 🟡 YELLOW — isolated KBO / critical-MLB delta in validation
+- Project OS status: 🟡 YELLOW — baseline correction and production alignment in progress
 - Canonical repository: `jonwang329/taiwan-mlb-tracker-`
-- Golden baseline: current production MLB/MiLB + Asia page
-- Current delta version: `2026-08-31 — KBO refresh + critical MLB comparison`
+- Locked stable baseline: `MLB-STABLE-2026-08-31-A`
+- Baseline rule: production must match this file before READY TO TEST.
+
+## Locked stable baseline — MLB-STABLE-2026-08-31-A
+
+### Navigation / UI
+- MLB / MiLB is always the default page.
+- There is exactly **one** league navigation control in the DOM.
+- On MLB / MiLB, that single control displays `🇯🇵 Japan →`.
+- On Asia, the same control changes to `← MLB / MiLB`.
+- Never render two equal-weight MLB / Japan or MLB / Asia buttons, circles, pills, cards, or overlapping controls.
+- Do not rely on CSS to hide a second navigation control; the second control must not exist.
+
+### Today / status authority
+- One authoritative render path owns Today game status and results.
+- A player must never simultaneously show a pending/confirmation message and already-updated game results for the same game.
+- If game results are available, show the results as the authoritative state.
+- Global refresh/status text may show a neutral last-update timestamp only; it must not duplicate per-player confirmation messaging.
+- Do not clear or partially repaint the dashboard just to show checking/confirmation state.
+
+### Version control
+- Every testable production release must identify Version + Date + exact Time + commit SHA.
+- Before every user test, verify the deployed production version against this locked baseline.
+- Data/snapshot refresh jobs may update data only and must not alter this UI baseline.
+- If production differs from source, determine whether the cause is deployment lag, alternate UI path, cache, branch mismatch, mixed assets, or snapshot overwrite before asking the user to test.
+- READY TO TEST is forbidden until production itself is verified against the locked baseline.
 
 ## Protected MLB Stable Core
-These paths are protected and must not be redesigned for this delta:
+These paths/behaviors remain protected unless an explicit change requires otherwise:
 - MLB / MiLB Today view and Quick Scoreboard
-- `app.js` refresh / data collection core
+- `app.js` MLB/MiLB data collection core
 - Observation list / Manage flow
 - Cloudflare-backed observation state
 - LINE production schedule and notification flow
-- Existing league benchmark generation and same-league Quick Scoreboard comparison
+- League benchmark generation and same-league Quick Scoreboard comparison
 - Mobile / tablet / desktop product baseline
 
-## Approved Delta — 2026-08-31
-This delta must remain small, isolated and easy to roll back.
-
-### Asia / KBO
-- Keep one `Asia` page. Do not add a separate Korea tab.
+## Asia / KBO isolated module
+- Keep one Asia page. Do not add a separate Korea tab.
 - Japan remains six tracked players and keeps the existing NPB presentation.
 - Korea currently contains 王彥程 only.
 - 王彥程 official identity: 韓華鷹 Hanwha Eagles, KBO first team, No.19.
-- Official KBO 2026 snapshot as of 2026-08-31: 23 G, 10-5, ERA 3.52, 120 1/3 IP, 95 K, WHIP 1.45, 7 QS.
-- KBO official page also lists ERA rank No.4 at this snapshot.
-- Latest official game shown: 08/18 vs KIA, 5 IP, 7 H, 3 ER, 2 BB, 3 K.
-- KBO remains a curated official snapshot in `npb-update.js`. Do not add a browser scraper or couple it to MLB refresh logic in this delta.
+- KBO remains isolated in `npb-update.js`; do not couple it to MLB refresh logic.
 
-### Critical MLB comparison
+## Critical MLB comparison
 Only two MLB players receive the extra `MLB 全聯盟比較` block:
 1. 李灝宇 Hao-Yu Lee — MLB hitter
 2. 鄧愷威 Kai-Wei Teng — MLB pitcher
 
-The comparison reads the existing daily MLB league benchmark cache and combines AL + NL into a simple MLB-wide reference. It does not create a new data pipeline.
+Lee metrics: AVG / K% / BB% / BB-K.
+Teng metrics: ERA / WHIP / K% / BB%.
 
-Lee metrics:
-- AVG
-- K%
-- BB%
-- BB/K
+## Mandatory regression checks before READY TO TEST
+- Production version/commit matches the intended release.
+- MLB / MiLB opens by default.
+- Exactly one league toggle exists in the DOM.
+- MLB view shows only `🇯🇵 Japan →`.
+- Asia view uses the same control as `← MLB / MiLB`.
+- 李灝宇 Today row/card does not show confirmation/pending text together with updated results.
+- No player shows duplicate status and result authority for the same game.
+- Today, Manage, observation list, league benchmarks, Cloudflare, LINE, and snapshot refresh remain functional.
+- Data refresh does not change protected UI files.
+- Public production site is verified after deployment, not just source/CI.
 
-Teng metrics:
-- ERA
-- WHIP
-- K%
-- BB%
-
-The signed percentage is a relative gap versus MLB-wide average, not a percentile or ranking. Better/worse direction is metric-aware.
-
-### Refresh status consistency
-- Do not change `app.js` or the refresh engine in this delta.
-- Keep the last-good player data visible during confirmation.
-- `refresh-status-consistency.js` only clarifies the status line after schedule confirmation: schedule confirmation is not the same as every player stat changing.
-- Never clear or partially repaint the dashboard just to show a checking state.
-
-## Project OS guardrail
-For this delta:
-- No new Korea page
-- No new KBO browser scraper
-- No modification to MLB core data collection
-- No modification to Cloudflare / LINE / watchlist logic
-- New behavior lives in isolated assets and can be removed without touching stable core
-
-## Acceptance checks
-- MLB/MiLB remains the default page
-- Asia page still shows Japan and Korea in one view
-- 王彥程 shows Hanwha No.19 and the 2026-08-31 KBO snapshot
-- Japan cards remain unchanged in structure
-- 李灝宇 card shows MLB-wide AVG / K% / BB% / BB-K comparison
-- 鄧愷威 card shows MLB-wide ERA / WHIP / K% / BB% comparison
-- No other player card gets the critical MLB comparison block
-- Refresh confirmation wording does not imply that unchanged player data is newly refreshed
-- Existing Today, Manage, observation list, league benchmarks, Cloudflare and LINE behavior still passes production smoke
-- Production site must be verified before READY TO TEST
-
-## Next safe action
-Run CI, review the isolated diff, merge only after validation succeeds, then wait for GitHub Pages and production smoke. Do not announce READY TO TEST until the deployed public site passes.
+## Release gate
+CHECK BASELINE → CHECK PRODUCTION VERSION → APPLY MINIMAL DELTA → REGRESSION TEST → DEPLOY → VERIFY PRODUCTION DOM/DATA → VERIFY VERSION/TIME/SHA → READY TO TEST.
