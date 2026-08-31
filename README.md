@@ -4,6 +4,13 @@ A mobile-friendly tracker for Taiwanese baseball players using MLB / MiLB Stats 
 
 ## Production status
 
+2026-08-31 08:59 JST Japan-switch UI refinement:
+
+- MLB / MiLB remains the dominant default experience; the prior equal-weight MLB / Asia pills are removed.
+- The MLB page now shows only a small secondary `🇯🇵 Japan →` switch.
+- The Asia page shows a small `← MLB / MiLB` return control in the same location.
+- This is UI-only. `npb-update.js`, MLB/MiLB data collection, refresh logic, Cloudflare, LINE, watchlist and Asia player data are unchanged.
+
 2026-08-31 KBO refresh + critical MLB comparison:
 
 - Project OS guardrail: this is an isolated delta. `app.js`, MLB/MiLB collection, Cloudflare, LINE and observation-list logic are not redesigned.
