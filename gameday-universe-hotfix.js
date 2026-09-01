@@ -7,6 +7,7 @@
 
   const { scheduleQueryWindow, isTaiwanTodayGame, gameTaiwanDate } = timeLogic;
   let running = false;
+  let queuedForce = false;
   let timer = null;
 
   function trackedPairs() {
@@ -53,6 +54,24 @@
     return seen;
   }
 
+  function playersInPublishedLineup(feed, ids) {
+    const found = new Map();
+    const teams = feed?.liveData?.boxscore?.teams || {};
+    for (const side of ['away', 'home']) {
+      for (const entry of Object.values(teams?.[side]?.players || {})) {
+        const playerId = Number(entry?.person?.id || 0);
+        const battingOrder = Number(entry?.battingOrder || 0);
+        const isStarter = Boolean(battingOrder || entry?.gameStatus?.isStarter);
+        if (!ids.has(playerId) || !isStarter) continue;
+        found.set(playerId, {
+          battingOrder,
+          position: entry?.position?.abbreviation || entry?.position?.name || ''
+        });
+      }
+    }
+    return found;
+  }
+
   function liveStat(feed, player) {
     const key = `ID${player.id}`;
     const entry = feed?.liveData?.boxscore?.teams?.home?.players?.[key] || feed?.liveData?.boxscore?.teams?.away?.players?.[key];
@@ -93,12 +112,41 @@
     }
   }
 
-  function shouldScanGame(game, now, force = false) {
+  function markScheduled(player, result, feed, lineup) {
+    if (result.today?.onGame) return;
+    const gamePk = Number(feed?.gamePk || feed?.gameData?.game?.pk);
+    result.today = {
+      date: gameTaiwanDate({ gameDate: feed?.gameData?.datetime?.dateTime || feed?.gameData?.datetime?.officialDate }),
+      stat: {},
+      game: { gamePk },
+      live: false,
+      scheduled: true,
+      onGame: false,
+      battingOrder: lineup.battingOrder,
+      position: lineup.position
+    };
+    const spot = lineup.battingOrder ? Math.ceil(lineup.battingOrder / 100) : 0;
+    const label = player.group === 'pitching'
+      ? '預定先發投手'
+      : `先發已確認${spot ? ` · 第 ${spot} 棒` : ''}${lineup.position ? ` · ${lineup.position}` : ''}`;
+    const summary = document.querySelector(`a[href="#player-${player.id}"] .summary-today`);
+    if (summary) summary.textContent = label;
+    const detail = document.querySelector(`#player-${player.id} .today-detail`);
+    if (detail) {
+      const strong = detail.querySelector('strong');
+      const text = detail.querySelector('p');
+      if (strong) strong.textContent = '先發已確認';
+      if (text) text.textContent = label;
+    }
+  }
+
+  function shouldScanGame(game, now, force = false, sportId = 0) {
     const state = game?.status?.abstractGameState;
     const detailed = String(game?.status?.detailedState || '').toLowerCase();
     const startAt = new Date(game?.gameDate || 0).getTime();
     const age = now.getTime() - startAt;
     if (force && state !== 'Preview') return true;
+    if (sportId === 1 && state === 'Preview' && startAt && age >= -12 * 60 * 60_000 && age <= 0) return true;
     if (state === 'Live') return true;
     if (/in progress|warmup|delayed|manager challenge|review/.test(detailed)) return true;
     if (startAt && age >= -5 * 60_000 && age <= 6 * 60 * 60_000 && state !== 'Preview') return true;
@@ -107,7 +155,11 @@
   }
 
   async function scan({ force = false } = {}) {
-    if (running || (document.hidden && !force)) return { skipped: true };
+    if (running) {
+      if (force) queuedForce = true;
+      return { skipped: true, queued: force };
+    }
+    if (document.hidden && !force) return { skipped: true };
     running = true;
     let activeGames = 0;
     try {
@@ -119,15 +171,15 @@
 
       const schedules = await Promise.allSettled(SPORT_IDS.map(async sportId => {
         const data = await fetchJson(`${API}/schedule?sportId=${sportId}&startDate=${start}&endDate=${end}`);
-        return (data.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now));
+        return { sportId, games: (data.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now)) };
       }));
       const scheduleSuccesses = schedules.filter(item => item.status === 'fulfilled').length;
 
       const games = new Map();
       for (const item of schedules) {
         if (item.status !== 'fulfilled') continue;
-        for (const game of item.value) {
-          if (game?.gamePk && shouldScanGame(game, now, force)) games.set(Number(game.gamePk), game);
+        for (const game of item.value.games) {
+          if (game?.gamePk && shouldScanGame(game, now, force, item.value.sportId)) games.set(Number(game.gamePk), game);
         }
       }
       activeGames = games.size;
@@ -141,6 +193,13 @@
       let matched = 0;
       for (const item of feeds) {
         if (item.status !== 'fulfilled') continue;
+        const lineups = playersInPublishedLineup(item.value.feed, trackedIds);
+        for (const [playerId, lineup] of lineups) {
+          const pair = pairById.get(playerId);
+          if (!pair) continue;
+          markScheduled(pair.player, pair.result, item.value.feed, lineup);
+          matched += 1;
+        }
         const seen = playersSeenInFeed(item.value.feed, trackedIds);
         for (const [playerId, presence] of seen) {
           const pair = pairById.get(playerId);
@@ -150,7 +209,7 @@
         }
       }
 
-      const count = currentPairs.filter(({ result }) => result.today?.onGame || result.today?.stat).length;
+      const count = currentPairs.filter(({ result }) => result.today?.scheduled || result.today?.onGame || result.today?.stat).length;
       const countNode = document.querySelector('#today-count');
       if (countNode) countNode.textContent = String(count);
       if (matched > 0) {
@@ -165,12 +224,14 @@
     } finally {
       running = false;
       clearTimeout(timer);
-      timer = setTimeout(() => scan(), activeGames ? 20_000 : 60_000);
+      if (queuedForce) {
+        queuedForce = false;
+        timer = setTimeout(() => scan({ force: true }), 0);
+      } else timer = setTimeout(() => scan(), activeGames ? 20_000 : 60_000);
     }
   }
 
   window.TaiwanMlbUniverseScan = scan;
-  document.querySelector('#refresh-btn')?.addEventListener('click', () => setTimeout(() => scan({ force: true }), 250));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scan(); });
   scan();
 })();
