@@ -1,7 +1,6 @@
 (() => {
   const API = 'https://statsapi.mlb.com/api/v1';
   const LIVE_API = 'https://statsapi.mlb.com/api/v1.1';
-  const SPORT_IDS = [1, 11, 12, 13, 14, 16];
   const timeLogic = window.TaiwanGameTime;
   if (!timeLogic) return;
 
@@ -37,6 +36,16 @@
 
   function idSet(currentPairs) {
     return new Set(currentPairs.map(({ player }) => Number(player.id)).filter(Boolean));
+  }
+
+  function currentMlbTeamIds(currentPairs) {
+    const ids = new Set();
+    for (const { result } of currentPairs) {
+      const level = result?.currentStatus?.level || result?.latest?.level || result?.today?.level;
+      const teamId = Number(result?.currentStatus?.teamId || result?.latest?.team?.id || result?.today?.team?.id || 0);
+      if (level === 'MLB' && teamId) ids.add(teamId);
+    }
+    return [...ids];
   }
 
   function playersSeenInFeed(feed, ids) {
@@ -168,9 +177,11 @@
       const trackedIds = idSet(currentPairs);
       if (!trackedIds.size) return;
       const { start, end } = scheduleQueryWindow(now);
+      const mlbTeamIds = currentMlbTeamIds(currentPairs);
 
-      const schedules = await Promise.allSettled(SPORT_IDS.map(async sportId => {
-        const data = await fetchJson(`${API}/schedule?sportId=${sportId}&startDate=${start}&endDate=${end}`);
+      const teamFilter = mlbTeamIds.length ? `&teamId=${mlbTeamIds.join(',')}` : '';
+      const schedules = await Promise.allSettled([1].map(async sportId => {
+        const data = await fetchJson(`${API}/schedule?sportId=${sportId}${teamFilter}&startDate=${start}&endDate=${end}`);
         return { sportId, games: (data.dates || []).flatMap(date => date.games || []).filter(game => isTaiwanTodayGame(game, now)) };
       }));
       const scheduleSuccesses = schedules.filter(item => item.status === 'fulfilled').length;
