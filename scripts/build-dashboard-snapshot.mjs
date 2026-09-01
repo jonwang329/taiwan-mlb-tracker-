@@ -127,7 +127,7 @@ async function fetchOfficialToday(player,teamIds,level){
         return rank(a)-rank(b)||new Date(b.gameDate||0)-new Date(a.gameDate||0);
       });
       for(const game of ordered){
-        if(!game.gamePk||game.status?.abstractGameState==='Preview'||seenGames.has(game.gamePk))continue;
+        if(!game.gamePk||seenGames.has(game.gamePk))continue;
         seenGames.add(game.gamePk);
         relevantGames+=1;
         try{
@@ -138,6 +138,9 @@ async function fetchOfficialToday(player,teamIds,level){
           if(!boxPlayer)continue;
           const stat=player.group==='pitching'?(boxPlayer.stats?.pitching||{}):(boxPlayer.stats?.batting||boxPlayer.stats?.hitting||{});
           if(liveAppearance(player,stat))return {date:gameTaiwanDate(game),level,stat,game:{gamePk:game.gamePk},live:game.status?.abstractGameState==='Live'};
+          const battingOrder=Number(boxPlayer.battingOrder||0);
+          const isStarter=Boolean(boxPlayer.gameStatus?.isStarter||battingOrder);
+          if(isStarter)return {date:gameTaiwanDate(game),level,stat:{},game:{gamePk:game.gamePk},live:false,scheduled:true,onGame:false,battingOrder,position:boxPlayer.position?.abbreviation||boxPlayer.position?.name||''};
         }catch(error){lastError=error;console.warn(`[snapshot] Official boxscore unavailable for ${player.name}: ${error.message}`);}
       }
     }catch(error){lastError=error;console.warn(`[snapshot] Official schedule unavailable for ${player.name}: ${error.message}`);}
