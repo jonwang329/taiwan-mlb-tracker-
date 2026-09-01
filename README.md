@@ -27,6 +27,13 @@ This rule is mandatory before every user test and applies to every release, hotf
 
 ## Stability guardrails
 
+### Locked today-status authority
+- `app.js` owns the dashboard model and rendering; `gameday-universe-hotfix.js` is the only live Today Resolver loaded by production.
+- The resolver matches every tracked player by immutable MLB person ID. It must not contain player-name exceptions or a fixed priority roster.
+- One daily MLB/MiLB schedule scan is shared across all tracked IDs. Published MLB lineups are authoritative even while the game is still `Preview`.
+- Refresh runs the same resolver immediately; profile, season, and history refreshes continue in the background and may not erase a confirmed scheduled/live state.
+- Legacy Today writers (`official-today-hotfix.js`, `live-refresh.js`, `gameday-presence-hotfix.js`, `single-source-status-hotfix.js`) remain in source history but must not be loaded by `index.html`.
+
 - Production must have exactly one dominant MLB / MiLB entry point. Do not render two equal-weight MLB / Japan (or MLB / Asia) circles, pills, cards, or primary buttons.
 - A player row/card must never simultaneously show a pending/confirmation state and already-updated game results for the same game. Rendering must resolve to one authoritative state only.
 - Data refresh/snapshot jobs may update data artifacts only; they must not rewrite UI hierarchy or restore superseded navigation.
