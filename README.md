@@ -32,6 +32,7 @@ This rule is mandatory before every user test and applies to every release, hotf
 - The resolver matches every tracked player by immutable MLB person ID. It must not contain player-name exceptions or a fixed priority roster.
 - One daily MLB/MiLB schedule scan is shared across all tracked IDs. Published MLB lineups are authoritative even while the game is still `Preview`.
 - Refresh runs the same resolver immediately; profile, season, and history refreshes continue in the background and may not erase a confirmed scheduled/live state.
+- Production must load `app.js` before the Today Resolver so the resolver always writes into the active dashboard model; an empty model falls back to the central snapshot.
 - Legacy Today writers (`official-today-hotfix.js`, `live-refresh.js`, `gameday-presence-hotfix.js`, `single-source-status-hotfix.js`) remain in source history but must not be loaded by `index.html`.
 
 - Production must have exactly one dominant MLB / MiLB entry point. Do not render two equal-weight MLB / Japan (or MLB / Asia) circles, pills, cards, or primary buttons.
