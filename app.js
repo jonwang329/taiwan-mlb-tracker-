@@ -105,6 +105,18 @@ function updateMetrics(results){const played=results.map((r,i)=>[r,players[i]]).
 function snapshotSignature(results){return JSON.stringify({players:players.map(p=>[p.id,p.name,p.org,p.group]),results:results.map(r=>({today:r.today,latest:r.latest,season:r.season,games:(r.games||[]).slice(0,5)}))});}
 function persistSnapshot(results,savedAt=Date.now()){lastPlayers=structuredClone(players);lastResults=structuredClone(results);lastSignature=snapshotSignature(results);lastSuccessAt=savedAt;try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt,players:lastPlayers,results:lastResults}))}catch(error){console.warn('Could not persist last-good snapshot',error)}}
 function paint(results,statusText){const summary=document.querySelector('#player-summary'),details=document.querySelector('#player-details');summary.innerHTML=summaryGroup('hitting',results)+summaryGroup('pitching',results);details.innerHTML=players.map((p,i)=>detail(p,results[i])).join('');updateMetrics(results);wireImages();document.querySelector('#last-update').textContent=statusText||`MLB API 已更新 · ${formatTime(lastSuccessAt||Date.now())}`;document.dispatchEvent(new CustomEvent('tracker:players-loaded',{detail:players}));}
+async function refreshCentralSnapshot(){
+  const response=await fetch(`data/dashboard-snapshot.js?_=${Date.now()}`,{cache:'no-store'});
+  if(!response.ok)throw new Error(`中央快照 ${response.status}`);
+  const text=await response.text(),match=text.match(/window\.CENTRAL_DASHBOARD_SNAPSHOT\s*=\s*(.*);\s*$/s);
+  if(!match)throw new Error('中央快照格式錯誤');
+  const snapshot=JSON.parse(match[1]);
+  if(!Array.isArray(snapshot.players)||!Array.isArray(snapshot.results)||snapshot.players.length!==snapshot.results.length)throw new Error('中央快照不完整');
+  setTrackedPlayers(snapshot.players);
+  persistSnapshot(snapshot.results,Number(snapshot.savedAt)||Date.now());
+  paint(lastResults,`中央資料已更新 · ${formatTime(lastSuccessAt)}`);
+  return snapshot;
+}
 function markInitialConfirmationPending(){
   document.querySelector('#last-update').textContent='正在向 MLB／MiLB 確認今日即時資料…';
 }
@@ -159,12 +171,16 @@ document.querySelector('#today-date').textContent=new Intl.DateTimeFormat('zh-TW
 document.querySelector('#refresh-btn').addEventListener('click',async e=>{
   const button=e.currentTarget,lastUpdate=document.querySelector('#last-update');
   button.disabled=true;
-  lastUpdate.textContent='正在優先更新 MLB 今日賽事…';
+  lastUpdate.textContent='正在更新最新資料…';
   try{
-    if(window.TaiwanMlbUniverseScan)await window.TaiwanMlbUniverseScan({force:true});
+    await refreshCentralSnapshot();
+  }catch(error){
+    console.warn('Central snapshot refresh failed',error);
+    lastUpdate.textContent=`保留最後有效資料 · ${formatTime(lastSuccessAt)}`;
   }finally{
     button.disabled=false;
   }
+  if(window.TaiwanMlbUniverseScan)window.TaiwanMlbUniverseScan({force:true}).catch(()=>{});
   refreshData({reason:'button-background'}).catch(()=>{});
 });
 window.addEventListener('tracker:gameday-universe',event=>{
