@@ -11,7 +11,7 @@
   let timer = null;
 
   function trackedPairs() {
-    if (typeof players !== 'undefined' && typeof lastResults !== 'undefined' && Array.isArray(players) && Array.isArray(lastResults)) {
+    if (typeof players !== 'undefined' && typeof lastResults !== 'undefined' && Array.isArray(players) && Array.isArray(lastResults) && players.length && lastResults.length) {
       return players.map((player, index) => ({ player, result: lastResults[index] })).filter(({ result }) => result);
     }
     const snapshot = window.CENTRAL_DASHBOARD_SNAPSHOT;
