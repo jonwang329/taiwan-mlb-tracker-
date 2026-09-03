@@ -1,4 +1,4 @@
-import handler from './line-flex-worker.js';
+import handler from './line-canonical-worker.js';
 
 // Cloudflare is the only production LINE scheduler. The imported Flex worker
 // resolves each current team's official sportId before querying MiLB schedules.
