@@ -17,6 +17,10 @@ test('today gamePk can be read even when schedule state is not yet Live', () => 
   assert.doesNotMatch(source, /if \(\(state === 'Live' \|\| state === 'Final'\) && game\.gamePk\)/);
 });
 
-test('website loads Gameday presence after normal live refresh', () => {
-  assert.match(index, /live-refresh\.js[^\n]+gameday-presence-hotfix\.js/s);
+test('website loads the shared formatter before app and the one Gameday updater', () => {
+  const formatterAt=index.indexOf('today-stat-line.js');
+  const appAt=index.indexOf('app.js?v=');
+  const gamedayAt=index.indexOf('gameday-universe-hotfix.js');
+  assert.ok(formatterAt>=0&&formatterAt<appAt&&appAt<gamedayAt);
+  assert.doesNotMatch(index,/live-refresh\.js|gameday-presence-hotfix\.js/);
 });

@@ -42,15 +42,7 @@
   }
 
   function statLine(player, stat = {}) {
-    if (player.group === 'pitching') {
-      return `${val(stat.inningsPitched, '0')} IP · ${val(stat.hits, 0)} H · ${val(stat.earnedRuns, 0)} ER · ${val(stat.baseOnBalls, 0)} BB · ${val(stat.strikeOuts, 0)} K${stat.battersFaced != null ? ` · ${stat.battersFaced} BF` : ''}`;
-    }
-    const extras = [];
-    if (num(stat.baseOnBalls)) extras.push(`${stat.baseOnBalls} BB`);
-    if (num(stat.hitByPitch)) extras.push(`${stat.hitByPitch} HBP`);
-    if (num(stat.homeRuns)) extras.push(`${stat.homeRuns} HR`);
-    if (num(stat.rbi)) extras.push(`${stat.rbi} RBI`);
-    return `${val(stat.hits, 0)}-for-${val(stat.atBats, 0)}${stat.plateAppearances != null ? ` · ${stat.plateAppearances} PA` : ''}${extras.length ? ` · ${extras.join(' · ')}` : ''}`;
+    return window.TaiwanTodayStatLine(player, stat);
   }
 
   async function fetchJson(url) {

@@ -2,7 +2,7 @@
 
 ## Status
 - Project: Taiwan Baseball Tracker
-- Project OS status: 🟡 YELLOW — baseline correction and production alignment in progress
+- Project OS status: 🟡 YELLOW — 2026-09-03 Today status fix awaiting production verification
 - Canonical repository: `jonwang329/taiwan-mlb-tracker-`
 - Locked stable baseline: `MLB-STABLE-2026-08-31-A`
 - Baseline rule: production must match this file before READY TO TEST.
@@ -19,6 +19,8 @@
 
 ### Today / status authority
 - One authoritative render path owns Today game status and results.
+- `today-stat-line.js` is the one formatter for every Today row/card repaint path.
+- Live hitter output is result-first and preserves K and other events: `H-AB · PA · BB · K · HBP · HR · RBI · SB · CS · LIVE` (zero-value events omitted).
 - A player must never simultaneously show a pending/confirmation message and already-updated game results for the same game.
 - If game results are available, show the results as the authoritative state.
 - Global refresh/status text may show a neutral last-update timestamp only; it must not duplicate per-player confirmation messaging.

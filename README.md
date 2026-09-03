@@ -18,6 +18,13 @@ This rule is mandatory before every user test and applies to every release, hotf
 
 ## Production status
 
+2026-09-03 Today status single-authority fix:
+
+- Every dashboard path now uses `today-stat-line.js` as the only formatter for current-game stat lines.
+- A live hitter line preserves BB, K, HBP, HR, RBI, SB and CS through initial load, Gameday discovery, live refresh and detail-card repaint.
+- Quick Scoreboard no longer prefixes the result with a second `LIVE · 已上場` status. The canonical shape is result first, for example `1-3 · 3 PA · 2 K · 1 RBI · LIVE`.
+- A regression test prevents the retired Korean player Lim Chang-yong (`林昌勇` / `林昶勇`) from appearing in shipped MLB, KBO or snapshot rosters.
+
 2026-08-31 08:59 JST Japan-switch UI refinement:
 
 - MLB / MiLB remains the dominant default experience; the prior equal-weight MLB / Asia pills are removed.

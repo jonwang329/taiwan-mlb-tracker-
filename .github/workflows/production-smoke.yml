@@ -24,21 +24,23 @@ jobs:
           dashboard='https://jonwang329.github.io/taiwan-mlb-tracker-/'
           observation='https://taiwan-mlb-observation-list.jonwang329.workers.dev'
           line='https://taiwan-mlb-line-notifier.jonwang329.workers.dev'
-          expected_refresh_guard='refresh-terminal-state-fix.js?v=20260830-no-repaint-v3'
-          expected_refresh_status='refresh-status-consistency.js?v=20260831-v1'
-          expected_asia_asset='npb-update.js?v=20260831-kbo-refresh-v2'
+          expected_asia_asset='npb-update.js?v=20260901-default-mlb-v1'
           expected_compare_asset='mlb-critical-compare.js?v=20260831-v1'
-          expected_today_asset='summary-extra-stats.js?v=20260831-today-events-v1'
+          expected_today_asset='summary-extra-stats.js?v=20260903-single-authority-v1'
+          expected_today_formatter='today-stat-line.js?v=20260903-single-authority-v1'
+          expected_app='app.js?v=20260903-single-authority-v1'
+          expected_gameday='gameday-universe-hotfix.js?v=20260903-single-authority-v1'
           expected_highlight_asset='today-highlight.js?v=20260831-warning-v1'
 
           html=''
           for attempt in $(seq 1 24); do
             html=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}?smoke=${GITHUB_SHA}-${attempt}" || true)
-            if printf '%s' "$html" | grep -Fq "$expected_refresh_guard" \
-              && printf '%s' "$html" | grep -Fq "$expected_refresh_status" \
-              && printf '%s' "$html" | grep -Fq "$expected_asia_asset" \
+            if printf '%s' "$html" | grep -Fq "$expected_asia_asset" \
               && printf '%s' "$html" | grep -Fq "$expected_compare_asset" \
               && printf '%s' "$html" | grep -Fq "$expected_today_asset" \
+              && printf '%s' "$html" | grep -Fq "$expected_today_formatter" \
+              && printf '%s' "$html" | grep -Fq "$expected_app" \
+              && printf '%s' "$html" | grep -Fq "$expected_gameday" \
               && printf '%s' "$html" | grep -Fq "$expected_highlight_asset"; then
               break
             fi
@@ -47,21 +49,18 @@ jobs:
           done
 
           test -n "$html" || { echo '::error::Production dashboard returned no HTML'; exit 1; }
-          printf '%s' "$html" | grep -Fq "$expected_refresh_guard" || { echo '::error::Expected stable refresh guard is not deployed'; exit 1; }
-          printf '%s' "$html" | grep -Fq "$expected_refresh_status" || { echo '::error::Refresh status consistency module is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq "$expected_asia_asset" || { echo '::error::Asia/KBO page asset is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq "$expected_compare_asset" || { echo '::error::Critical MLB compare asset is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq "$expected_today_asset" || { echo '::error::Today event asset is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -Fq "$expected_today_formatter" || { echo '::error::Canonical Today formatter is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -Fq "$expected_app" || { echo '::error::Single-authority app is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -Fq "$expected_gameday" || { echo '::error::Single-authority Gameday updater is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq "$expected_highlight_asset" || { echo '::error::Today warning highlight asset is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq 'data-league-switch="mlb"' || { echo '::error::MLB switch is missing'; exit 1; }
           printf '%s' "$html" | grep -Fq 'data-league-switch="asia"' || { echo '::error::Asia switch is missing'; exit 1; }
           printf '%s' "$html" | grep -Fq 'data-league-page="asia"' || { echo '::error::Asia page container is missing'; exit 1; }
           if printf '%s' "$html" | grep -Fq 'data-league-switch="japan"'; then
             echo '::error::Old Japan-only tab is still present'
-            exit 1
-          fi
-          if printf '%s' "$html" | grep -Fq 'gameday-universe-hotfix.js'; then
-            echo '::error::Browser-wide Gameday universe scan is still loaded in production'
             exit 1
           fi
           printf '%s' "$html" | grep -Fq 'data/dashboard-snapshot.js' || { echo '::error::Central dashboard snapshot is not loaded'; exit 1; }
@@ -89,6 +88,14 @@ jobs:
           today_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}summary-extra-stats.js?verify=${GITHUB_SHA}")
           printf '%s' "$today_js" | grep -Fq 'k>=2' || { echo '::error::2K Today warning rule is missing'; exit 1; }
           printf '%s' "$today_js" | grep -Fq 'BB' || { echo '::error::Today BB exposure is missing'; exit 1; }
+
+          formatter_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}today-stat-line.js?verify=${GITHUB_SHA}")
+          printf '%s' "$formatter_js" | grep -Fq 'strikeOuts' || { echo '::error::Today formatter omits hitter strikeouts'; exit 1; }
+          printf '%s' "$formatter_js" | grep -Fq 'rbi' || { echo '::error::Today formatter omits hitter RBI'; exit 1; }
+          if printf '%s' "$asia_js" | grep -Eiq '林昌勇|林昶勇|Lim Chang[- ]?yong|임창용'; then
+            echo '::error::Removed Korean player is present in production'
+            exit 1
+          fi
 
           highlight_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}today-highlight.js?verify=${GITHUB_SHA}")
           printf '%s' "$highlight_js" | grep -Fq 'k>=2' || { echo '::error::2K highlight rule is missing'; exit 1; }

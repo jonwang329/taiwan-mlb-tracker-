@@ -80,8 +80,7 @@
   }
 
   function statLine(player, stat) {
-    if (player.group === 'pitching') return `${stat.inningsPitched ?? '0'} IP · ${num(stat.hits)} H · ${num(stat.earnedRuns)} ER · ${num(stat.baseOnBalls)} BB · ${num(stat.strikeOuts)} K`;
-    return `${num(stat.hits)}-${num(stat.atBats)}${stat.plateAppearances != null ? ` · ${stat.plateAppearances} PA` : ''}`;
+    return window.TaiwanTodayStatLine(player, stat);
   }
 
   function isProbableStarter(player, game) {
@@ -120,7 +119,7 @@
     const label = p.current ? 'LIVE · 現在場上' : 'LIVE · 已上場';
     const line = statLine(player, stat);
     const summary = document.querySelector(`a[href="#player-${player.id}"] .summary-today`);
-    if (summary) summary.textContent = `${label} · ${line}`;
+    if (summary) summary.textContent = `${line} · LIVE`;
     const detail = document.querySelector(`#player-${player.id} .today-detail`);
     if (detail) {
       const strong = detail.querySelector('strong');

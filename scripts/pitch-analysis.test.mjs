@@ -71,12 +71,10 @@ test('slot is reserved synchronously below today detail and protects scroll anch
   assert.match(css, /\.pitch-analysis\.is-loading\{min-height:430px\}/);
 });
 
-test('browser loads v6 pitch analysis directly after the stable app core', () => {
-  assert.match(index, /pitch-analysis\.css\?v=20260814-pitch-v6/);
-  assert.match(index, /pitch-analysis\.js\?v=20260814-pitch-v6/);
-  const appAt = index.indexOf('app.js?v=');
-  const pitchAt = index.indexOf('pitch-analysis.js?v=');
-  assert.ok(appAt >= 0 && pitchAt > appAt);
+test('browser keeps the retired embedded pitch panel out of the stable UI', () => {
+  assert.doesNotMatch(index, /pitch-analysis\.css/);
+  assert.doesNotMatch(index, /pitch-analysis\.js/);
+  assert.match(index, /smart-insight\.js/);
 });
 
 test('MLB playByPlay endpoint returns pitch events for a known tracked-player game', async () => {

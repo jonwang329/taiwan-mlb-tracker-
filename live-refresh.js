@@ -42,9 +42,7 @@
   }
 
   function line(player, stat = {}) {
-    return player.group === 'pitching'
-      ? `${val(stat.inningsPitched, '0')} IP · ${val(stat.hits, 0)} H · ${val(stat.earnedRuns, 0)} ER · ${val(stat.baseOnBalls, 0)} BB · ${val(stat.strikeOuts, 0)} K${stat.battersFaced != null ? ` · ${stat.battersFaced} BF` : ''}`
-      : `${val(stat.hits, 0)}-${val(stat.atBats, 0)}${stat.plateAppearances != null ? ` · ${stat.plateAppearances} PA` : ''} · ${num(stat.homeRuns) ? `${stat.homeRuns} HR · ` : ''}${num(stat.rbi) ? `${stat.rbi} RBI` : ''}`.replace(/ · $/, '');
+    return window.TaiwanTodayStatLine(player, stat);
   }
 
   async function fetchJson(url, timeout = 7000) {

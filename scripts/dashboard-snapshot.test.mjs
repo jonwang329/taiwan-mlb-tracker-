@@ -41,7 +41,9 @@ test('website checks automatically at startup and after returning to the tab',as
 test('Refresh button always requests official data immediately',async()=>{
   const app=await read('app.js');
   assert.match(app,/refresh-btn[^\n]*addEventListener\('click'/);
-  assert.match(app,/refreshData\(\{reason:'button'\}\)/);
+  assert.match(app,/await refreshCentralSnapshot\(\)/);
+  assert.match(app,/TaiwanMlbUniverseScan\(\{force:true\}\)/);
+  assert.match(app,/refreshData\(\{reason:'button-background'\}\)/);
   assert.match(app,/await loadTrackedPlayers\(\)/);
   assert.match(app,/await collectResults\(\)/);
   assert.doesNotMatch(app,/refreshCooldown/i);
