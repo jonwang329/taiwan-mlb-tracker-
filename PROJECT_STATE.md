@@ -2,7 +2,9 @@
 
 ## Status
 - Project: Taiwan Baseball Tracker
-- Project OS status: 🟡 YELLOW — 2026-09-03 Today status fix awaiting production verification
+- Project OS status: 🟢 GREEN — Today status fix deployed and production-verified
+- Release: `MLB-2026-09-03-TODAY-V2` · verified 2026-09-03 09:41 Asia/Taipei
+- Production code commit: `f3a207fe761d06d1eae52c951aa4ae246f36ea20`
 - Canonical repository: `jonwang329/taiwan-mlb-tracker-`
 - Locked stable baseline: `MLB-STABLE-2026-08-31-A`
 - Baseline rule: production must match this file before READY TO TEST.
