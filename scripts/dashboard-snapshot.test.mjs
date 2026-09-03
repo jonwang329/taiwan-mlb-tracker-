@@ -57,6 +57,13 @@ test('API failure preserves last-good screen and shows last successful time',asy
   assert.match(app,/previousById/);
 });
 
+test('dashboard paint tolerates a transient player/result length mismatch',async()=>{
+  const app=await read('app.js');
+  assert.match(app,/safeResults=players\.map\(\(_,i\)=>results\?\.\[i\]\|\|lastResults\?\.\[i\]/);
+  assert.match(app,/summaryGroup\('hitting',safeResults\)/);
+  assert.match(app,/updateMetrics\(safeResults\)/);
+});
+
 test('central fallback builder uses the same official schedule and boxscore source',async()=>{
   const builder=await read('scripts/build-dashboard-snapshot.mjs');
   assert.match(builder,/fetchOfficialToday/);
