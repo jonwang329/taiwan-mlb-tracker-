@@ -28,7 +28,7 @@ jobs:
           expected_compare_asset='mlb-critical-compare.js?v=20260831-v1'
           expected_today_asset='summary-extra-stats.js?v=20260903-single-authority-v1'
           expected_today_formatter='today-stat-line.js?v=20260903-single-authority-v1'
-          expected_app='app.js?v=20260903-single-authority-v1'
+          expected_app='app.js?v=20260903-single-authority-v2'
           expected_gameday='gameday-universe-hotfix.js?v=20260903-single-authority-v1'
           expected_highlight_asset='today-highlight.js?v=20260831-warning-v1'
 
