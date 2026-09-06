@@ -38,14 +38,20 @@ test('website checks automatically at startup and after returning to the tab',as
   assert.match(app,/refreshData\(\{reason:'resume'\}\)/);
 });
 
-test('Refresh button always requests official data immediately',async()=>{
+test('Refresh button uses the same single official-data writer as startup',async()=>{
   const app=await read('app.js');
+  const gameday=await read('gameday-universe-hotfix.js');
   assert.match(app,/refresh-btn[^\n]*addEventListener\('click'/);
-  assert.match(app,/await refreshCentralSnapshot\(\)/);
-  assert.match(app,/TaiwanMlbUniverseScan\(\{force:true\}\)/);
-  assert.match(app,/refreshData\(\{reason:'button-background'\}\)/);
+  assert.match(app,/await refreshData\(\{reason:'button'\}\)/);
+  assert.match(app,/refreshData\(\{reason:'startup'\}\)/);
   assert.match(app,/await loadTrackedPlayers\(\)/);
   assert.match(app,/await collectResults\(\)/);
+  assert.doesNotMatch(app,/await refreshCentralSnapshot\(\)/);
+  assert.doesNotMatch(app,/button-background/);
+  assert.doesNotMatch(app,/TaiwanMlbUniverseScan\(\{force:true\}\)/);
+  assert.match(gameday,/exactly one refresh\/write path: app\.js refreshData\(\)/);
+  assert.match(gameday,/refreshData\(\{ reason: force \? 'gameday-force' : 'gameday' \}\)/);
+  assert.doesNotMatch(gameday,/CENTRAL_DASHBOARD_SNAPSHOT|persistSnapshot\(|paint\(|setInterval\(|setTimeout\(/);
   assert.doesNotMatch(app,/refreshCooldown/i);
 });
 
