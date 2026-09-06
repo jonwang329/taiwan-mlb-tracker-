@@ -2,16 +2,22 @@
 
 ## Status
 - Project: Taiwan Baseball Tracker
-- Project OS status: 🟢 GREEN — Today status fix deployed and production-verified
-- Release: `MLB-2026-09-03-TODAY-V2` · verified 2026-09-03 09:41 Asia/Taipei
-- Production code commit: `f3a207fe761d06d1eae52c951aa4ae246f36ea20`
+- Project OS status: 🟢 GREEN — USER TESTED GOOD / FIXED / CLOSED
+- Release: `MLB-STABLE-2026-09-06-A` · locked 2026-09-06 10:48 Asia/Taipei
+- Stable source commit before lock record: `b2d25de43183e970b0e5177dc5cbe3a590ed9c34`
 - Canonical repository: `jonwang329/taiwan-mlb-tracker-`
-- Locked stable baseline: `MLB-STABLE-2026-08-31-A`
-- Baseline rule: production must match this file before READY TO TEST.
+- Locked stable baseline: `MLB-STABLE-2026-09-06-A`
+- User verification: re-test confirmed the intermittent horizontal-line issue was no longer visible.
+- Close rule: this version is now the rollback baseline. Do not replace or redesign it during routine data/snapshot refreshes.
 
-## Locked stable baseline — MLB-STABLE-2026-08-31-A
+## 2026-09-06 Stable lock — MUST PRESERVE
+- Lim Chang-yong (`林昌勇` / `林昶勇`) must not appear in MLB/KBO/snapshot rosters.
+- 李灝宇 Today/update rendering must use one authoritative writer/refresh path; no competing repaint path may reintroduce intermittent blank/horizontal-line state.
+- Startup refresh and manual refresh must route through the same dashboard model.
+- Data/snapshot refresh jobs may update data only; they must not alter protected UI/status behavior.
+- If a future change regresses this behavior, roll back to `MLB-STABLE-2026-09-06-A` before further work.
 
-### Navigation / UI
+## Navigation / UI
 - MLB / MiLB is always the default page.
 - There is exactly **one** league navigation control in the DOM.
 - On MLB / MiLB, that single control displays `🇯🇵 Japan →`.
@@ -19,7 +25,7 @@
 - Never render two equal-weight MLB / Japan or MLB / Asia buttons, circles, pills, cards, or overlapping controls.
 - Do not rely on CSS to hide a second navigation control; the second control must not exist.
 
-### Today / status authority
+## Today / status authority
 - One authoritative render path owns Today game status and results.
 - `today-stat-line.js` is the one formatter for every Today row/card repaint path.
 - Live hitter output is result-first and preserves K and other events: `H-AB · PA · BB · K · HBP · HR · RBI · SB · CS · LIVE` (zero-value events omitted).
@@ -28,7 +34,7 @@
 - Global refresh/status text may show a neutral last-update timestamp only; it must not duplicate per-player confirmation messaging.
 - Do not clear or partially repaint the dashboard just to show checking/confirmation state.
 
-### Version control
+## Version control
 - Every testable production release must identify Version + Date + exact Time + commit SHA.
 - Before every user test, verify the deployed production version against this locked baseline.
 - Data/snapshot refresh jobs may update data only and must not alter this UI baseline.
