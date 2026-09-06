@@ -23,7 +23,7 @@ jobs:
           set -euo pipefail
           dashboard='https://jonwang329.github.io/taiwan-mlb-tracker-/'
           observation='https://taiwan-mlb-observation-list.jonwang329.workers.dev'
-          expected_app='app.js?v=20260903-single-authority-v2'
+          expected_app='app.js?v=20260907-today-monotonic-v1'
           expected_gameday='gameday-universe-hotfix.js?v=20260906-single-writer-v1'
 
           html=''
@@ -33,12 +33,12 @@ jobs:
               && printf '%s' "$html" | grep -Fq "$expected_gameday"; then
               break
             fi
-            echo "Waiting for single-writer production version (attempt $attempt)"
+            echo "Waiting for Today monotonic production version (attempt $attempt)"
             sleep 5
           done
 
           test -n "$html" || { echo '::error::Production dashboard returned no HTML'; exit 1; }
-          printf '%s' "$html" | grep -Fq "$expected_app" || { echo '::error::Single-authority app is not deployed'; exit 1; }
+          printf '%s' "$html" | grep -Fq "$expected_app" || { echo '::error::Today monotonic app is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq "$expected_gameday" || { echo '::error::Single-writer Gameday bridge is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq 'data/dashboard-snapshot.js' || { echo '::error::Central dashboard snapshot is not loaded'; exit 1; }
 
@@ -53,8 +53,9 @@ jobs:
             echo '::error::Manual Refresh still invokes the old central snapshot writer'
             exit 1
           fi
-          printf '%s' "$app_js" | grep -Fq 'previous?.today' || { echo '::error::Confirmed Today preservation guard is missing'; exit 1; }
-          printf '%s' "$app_js" | grep -Fq 'confirmedAppearance(players[i],previous.today)' || { echo '::error::Confirmed Today regression guard is missing'; exit 1; }
+          printf '%s' "$app_js" | grep -Fq 'function preferToday(' || { echo '::error::Monotonic Today authority is missing from app model'; exit 1; }
+          printf '%s' "$app_js" | grep -Fq 'todayProgress(p,incoming)<todayProgress(p,previous)' || { echo '::error::Today progress regression guard is missing'; exit 1; }
+          printf '%s' "$app_js" | grep -Fq 'preferredToday=preferToday(players[i],entry.result.today,previous?.today)' || { echo '::error::collectResults does not use monotonic Today authority'; exit 1; }
 
           gameday_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}gameday-universe-hotfix.js?verify=${GITHUB_SHA}")
           printf '%s' "$gameday_js" | grep -Fq 'exactly one refresh/write path: app.js refreshData()' || { echo '::error::Gameday bridge is not single-writer'; exit 1; }
@@ -64,12 +65,45 @@ jobs:
             exit 1
           fi
 
+          npb_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}npb-update.js?verify=${GITHUB_SHA}")
+          printf '%s' "$npb_js" | grep -Fq 'if(returnButton) returnButton.remove();' || { echo '::error::Stable single league-toggle DOM cleanup is missing'; exit 1; }
+          printf '%s' "$npb_js" | grep -Fq "setPage('mlb')" || { echo '::error::MLB / MiLB is not the default league view'; exit 1; }
+          printf '%s' "$npb_js" | grep -Fq "target==='asia'?'← MLB / MiLB'" || { echo '::error::Single league toggle does not switch back from Asia'; exit 1; }
+
           snapshot_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}data/dashboard-snapshot.js?verify=${GITHUB_SHA}")
           printf '%s' "$snapshot_js" | grep -Fq '701678' || { echo '::error::Hao-Yu Lee MLB ID 701678 is missing from production snapshot'; exit 1; }
           if printf '%s' "$snapshot_js" | grep -Eiq '林昌勇|林昶勇|Lim Chang[- ]?yong|임창용'; then
             echo '::error::Removed Korean player is present in production snapshot'
             exit 1
           fi
+          printf '%s' "$snapshot_js" > /tmp/dashboard-snapshot.js
+          node <<'NODE'
+          const fs = require('fs');
+          const vm = require('vm');
+          const sandbox = { window: {} };
+          vm.createContext(sandbox);
+          vm.runInContext(fs.readFileSync('/tmp/dashboard-snapshot.js', 'utf8'), sandbox);
+          const snap = sandbox.window.CENTRAL_DASHBOARD_SNAPSHOT;
+          if (!snap || !Array.isArray(snap.players) || !Array.isArray(snap.results)) throw new Error('Production central snapshot is invalid');
+          const byId = new Map(snap.players.map((p, i) => [Number(p.id), { player: p, result: snap.results[i] }]));
+          const expectedDate = '2026-09-07';
+          function assertToday(id, group, label) {
+            const row = byId.get(id);
+            if (!row) throw new Error(`${label} (${id}) missing from production snapshot`);
+            const today = row.result?.today;
+            if (!today || String(today.date || '').slice(0, 10) !== expectedDate) throw new Error(`${label} has no confirmed ${expectedDate} Today state`);
+            if (!today.game?.gamePk) throw new Error(`${label} Today state has no gamePk`);
+            const s = today.stat || {};
+            const n = v => Number(v || 0);
+            const appeared = group === 'pitching'
+              ? n(s.battersFaced) > 0 || n(s.pitchesThrown || s.numberOfPitches) > 0 || n(s.inningsPitched) > 0
+              : n(s.plateAppearances) > 0 || n(s.atBats) > 0 || n(s.runs) > 0 || n(s.baseOnBalls) > 0 || n(s.hitByPitch) > 0 || n(s.sacFlies) > 0 || n(s.sacBunts) > 0;
+            if (!appeared) throw new Error(`${label} Today state does not prove an appearance`);
+            console.log(`${label}: ${today.live ? 'LIVE' : 'CONFIRMED/FINAL'} gamePk=${today.game.gamePk}`);
+          }
+          assertToday(800213, 'pitching', '張弘霖');
+          assertToday(828667, 'hitting', '柯敬賢');
+          NODE
 
           players=$(curl -fsSL --max-time 20 "$observation/players")
           echo "$players" | jq -e '.players | type == "array" and length > 0' >/dev/null
@@ -78,4 +112,4 @@ jobs:
             exit 1
           fi
 
-          echo 'Single-writer production regression checks: OK'
+          echo 'Today monotonic production + stable UI regression checks: OK'
