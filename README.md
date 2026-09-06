@@ -118,3 +118,8 @@ During initial setup only, `tracked-players.json` remains as a safe fallback and
 - 12:00 Asia/Taipei
 
 GitHub Actions **LINE daily tracker updates** is manual fallback/testing only.
+
+## 2026-09-07 Today monotonic state root-cause fix
+- Root cause: `app.js collectResults()` only protected a confirmed Today state when the fresh result had `today == null`; a later non-null but weaker scheduled/partial state could overwrite a confirmed appearance.
+- Fix: Today precedence now lives in the single authoritative `app.js` model. Same-day state cannot regress from appearance to scheduled/partial, and lower-progress appearance data cannot replace higher-progress data. Equal-progress fresh data may advance LIVE to final.
+- No player-name or player-ID exceptions are used. `gameday-universe-hotfix.js` is compatibility-only.

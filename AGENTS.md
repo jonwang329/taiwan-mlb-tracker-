@@ -51,3 +51,8 @@ The user should never need to repeatedly ask:
 Provide proactive progress updates while work is ongoing. The user is comfortable with work taking time as long as the current status is visible.
 
 Never say “fixed,” “done,” or “ready” merely because code was changed or committed. Only announce **🟢 GREEN — READY TO TEST** after deployment and assistant-side production verification have both succeeded.
+
+## 2026-09-07 Today monotonic state root-cause fix
+- Root cause: `app.js collectResults()` only protected a confirmed Today state when the fresh result had `today == null`; a later non-null but weaker scheduled/partial state could overwrite a confirmed appearance.
+- Fix: Today precedence now lives in the single authoritative `app.js` model. Same-day state cannot regress from appearance to scheduled/partial, and lower-progress appearance data cannot replace higher-progress data. Equal-progress fresh data may advance LIVE to final.
+- No player-name or player-ID exceptions are used. `gameday-universe-hotfix.js` is compatibility-only.

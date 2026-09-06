@@ -100,6 +100,16 @@ async function fetchLevel(p,[sportId,level]){const base=`${API}/people/${p.id}/s
 async function load(p){const [levels,person]=await Promise.all([Promise.all(LEVELS.map(l=>fetchLevel(p,l))),fetchPerson(p)]),games=gamesSorted(levels.flatMap(x=>x.games)),latest=games[0],active=levels.find(x=>x.level===latest?.level)||levels.find(x=>x.season)||{},teamIds=[latest?.team?.id,...games.slice(0,5).map(g=>g.team?.id),person.currentTeam?.id],officialToday=await fetchOfficialToday(p,teamIds,active.level||latest?.level||'—',active.sportId||1);return {levels,games,latest,today:officialToday,season:active.season||{}};}
 function meaningful(r){return Boolean(r?.today||r?.latest||r?.games?.length||r?.levels?.some(x=>x.season));}
 function confirmedAppearance(p,today){return Boolean(today?.scheduled||today?.onGame||liveAppearance(p,today?.stat||{}));}
+function todayPhase(p,today){
+  if(!today||day(today.date)!==twToday())return 0;
+  if(liveAppearance(p,today.stat||{})||today.onGame)return 4;
+  if(today.live)return 3;
+  if(today.scheduled)return 2;
+  return 1;
+}
+function inningsOuts(value){const parts=String(value??'0').split('.'),whole=Number(parts[0]||0),rem=Number(parts[1]||0);return whole*3+(rem===1||rem===2?rem:0);}
+function todayProgress(p,today){const s=today?.stat||{};if(p.group==='pitching'){const bf=num(s.battersFaced),pitches=num(s.pitchesThrown||s.numberOfPitches),outs=inningsOuts(s.inningsPitched);return Math.max(bf,outs)*1000+pitches;}const pa=num(s.plateAppearances),derived=num(s.atBats)+num(s.baseOnBalls)+num(s.hitByPitch)+num(s.sacFlies)+num(s.sacBunts);return Math.max(pa,derived)*1000+num(s.hits)+num(s.runs)+num(s.rbi);}
+function preferToday(p,incoming,previous){const incomingPhase=todayPhase(p,incoming),previousPhase=todayPhase(p,previous);if(previousPhase<2)return incoming;if(incomingPhase<previousPhase)return previous;if(incomingPhase>previousPhase)return incoming;if(incomingPhase>=4&&todayProgress(p,incoming)<todayProgress(p,previous))return previous;return incoming;}
 function updateMetrics(results){const played=results.map((r,i)=>[r,players[i]]).filter(([r])=>r.today),hits=played.reduce((a,[r,p])=>a+(p.group==='hitting'?num(r.today.stat?.hits):0),0),ks=played.reduce((a,[r,p])=>a+(p.group==='pitching'?num(r.today.stat?.strikeOuts):0),0),hot=played.filter(([r,p])=>p.group==='hitting'?num(r.today.stat?.hits)>1||num(r.today.stat?.homeRuns):num(r.today.stat?.strikeOuts)>=4);document.querySelector('#player-count').textContent=players.length;document.querySelector('#today-count').textContent=played.length;document.querySelector('#highlight-count').textContent=hot.length;document.querySelector('#daily-total').textContent=`${hits} / ${ks}`;}
 function snapshotSignature(results){return JSON.stringify({players:players.map(p=>[p.id,p.name,p.org,p.group]),results:results.map(r=>({today:r.today,latest:r.latest,season:r.season,games:(r.games||[]).slice(0,5)}))});}
 function persistSnapshot(results,savedAt=Date.now()){lastPlayers=structuredClone(players);lastResults=structuredClone(results);lastSignature=snapshotSignature(results);lastSuccessAt=savedAt;try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt,players:lastPlayers,results:lastResults}))}catch(error){console.warn('Could not persist last-good snapshot',error)}}
@@ -118,8 +128,8 @@ async function collectResults(){
     const previous=previousById.get(Number(players[i].id));
     if(!entry.failed&&meaningful(entry.result)){
       freshCount+=1;
-      if(!entry.result.today&&previous?.today&&twToday(new Date(lastSuccessAt||Date.now()))===twToday()&&confirmedAppearance(players[i],previous.today))return {...entry.result,today:previous.today};
-      return entry.result;
+      const preferredToday=preferToday(players[i],entry.result.today,previous?.today);
+      return preferredToday===entry.result.today?entry.result:{...entry.result,today:preferredToday};
     }
     if(entry.failed)failedCount+=1;
     return previous||entry.result||{levels:[],games:[],latest:null,today:null,season:{}};
