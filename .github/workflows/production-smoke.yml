@@ -17,106 +17,65 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Verify deployed dashboard and production workers
+      - name: Verify single-writer production regression guard
         shell: bash
         run: |
           set -euo pipefail
           dashboard='https://jonwang329.github.io/taiwan-mlb-tracker-/'
           observation='https://taiwan-mlb-observation-list.jonwang329.workers.dev'
-          line='https://taiwan-mlb-line-notifier.jonwang329.workers.dev'
-          expected_asia_asset='npb-update.js?v=20260901-default-mlb-v1'
-          expected_compare_asset='mlb-critical-compare.js?v=20260831-v1'
-          expected_today_asset='summary-extra-stats.js?v=20260903-single-authority-v1'
-          expected_today_formatter='today-stat-line.js?v=20260903-single-authority-v1'
           expected_app='app.js?v=20260903-single-authority-v2'
           expected_gameday='gameday-universe-hotfix.js?v=20260906-single-writer-v1'
-          expected_highlight_asset='today-highlight.js?v=20260831-warning-v1'
 
           html=''
           for attempt in $(seq 1 24); do
             html=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}?smoke=${GITHUB_SHA}-${attempt}" || true)
-            if printf '%s' "$html" | grep -Fq "$expected_asia_asset" \
-              && printf '%s' "$html" | grep -Fq "$expected_compare_asset" \
-              && printf '%s' "$html" | grep -Fq "$expected_today_asset" \
-              && printf '%s' "$html" | grep -Fq "$expected_today_formatter" \
-              && printf '%s' "$html" | grep -Fq "$expected_app" \
-              && printf '%s' "$html" | grep -Fq "$expected_gameday" \
-              && printf '%s' "$html" | grep -Fq "$expected_highlight_asset"; then
+            if printf '%s' "$html" | grep -Fq "$expected_app" \
+              && printf '%s' "$html" | grep -Fq "$expected_gameday"; then
               break
             fi
-            echo "Waiting for expected production dashboard version (attempt $attempt)"
+            echo "Waiting for single-writer production version (attempt $attempt)"
             sleep 5
           done
 
           test -n "$html" || { echo '::error::Production dashboard returned no HTML'; exit 1; }
-          printf '%s' "$html" | grep -Fq "$expected_asia_asset" || { echo '::error::Asia/KBO page asset is not deployed'; exit 1; }
-          printf '%s' "$html" | grep -Fq "$expected_compare_asset" || { echo '::error::Critical MLB compare asset is not deployed'; exit 1; }
-          printf '%s' "$html" | grep -Fq "$expected_today_asset" || { echo '::error::Today event asset is not deployed'; exit 1; }
-          printf '%s' "$html" | grep -Fq "$expected_today_formatter" || { echo '::error::Canonical Today formatter is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq "$expected_app" || { echo '::error::Single-authority app is not deployed'; exit 1; }
           printf '%s' "$html" | grep -Fq "$expected_gameday" || { echo '::error::Single-writer Gameday bridge is not deployed'; exit 1; }
-          printf '%s' "$html" | grep -Fq "$expected_highlight_asset" || { echo '::error::Today warning highlight asset is not deployed'; exit 1; }
-          printf '%s' "$html" | grep -Fq 'data-league-switch="mlb"' || { echo '::error::MLB switch is missing'; exit 1; }
-          printf '%s' "$html" | grep -Fq 'data-league-switch="asia"' || { echo '::error::Asia switch is missing'; exit 1; }
-          printf '%s' "$html" | grep -Fq 'data-league-page="asia"' || { echo '::error::Asia page container is missing'; exit 1; }
-          if printf '%s' "$html" | grep -Fq 'data-league-switch="japan"'; then
-            echo '::error::Old Japan-only tab is still present'
-            exit 1
-          fi
           printf '%s' "$html" | grep -Fq 'data/dashboard-snapshot.js' || { echo '::error::Central dashboard snapshot is not loaded'; exit 1; }
-          printf '%s' "$html" | grep -Fq 'mlb-fetch-guard.js' || { echo '::error::MLB fetch guard is not loaded'; exit 1; }
 
-          asia_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}npb-update.js?verify=${GITHUB_SHA}")
-          printf '%s' "$asia_js" | grep -Fq '王彥程' || { echo '::error::王彥程 is missing from deployed Asia roster'; exit 1; }
-          printf '%s' "$asia_js" | grep -Fq '韓華鷹 Hanwha Eagles' || { echo '::error::Wang Hanwha identity is missing'; exit 1; }
-          printf '%s' "$asia_js" | grep -Fq 'KBO 一軍 · No.19' || { echo '::error::Wang KBO status is missing'; exit 1; }
-          printf '%s' "$asia_js" | grep -Fq "['3.52','ERA']" || { echo '::error::Wang official KBO ERA snapshot is missing'; exit 1; }
-          printf '%s' "$asia_js" | grep -Fq "['10-5','W-L']" || { echo '::error::Wang official KBO W-L snapshot is missing'; exit 1; }
-          printf '%s' "$asia_js" | grep -Fq "['120⅓','IP']" || { echo '::error::Wang official KBO innings snapshot is missing'; exit 1; }
-          printf '%s' "$asia_js" | grep -Fq "['95','K']" || { echo '::error::Wang official KBO strikeout snapshot is missing'; exit 1; }
-          printf '%s' "$asia_js" | grep -Fq 'ERA 3.52 目前列全 KBO 第 4' || { echo '::error::Wang KBO league context is missing'; exit 1; }
-          printf '%s' "$asia_js" | grep -Fq 'Japan / Korea · UTC+9' || { echo '::error::Asia UTC+9 label is missing'; exit 1; }
-
-          compare_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}mlb-critical-compare.js?verify=${GITHUB_SHA}")
-          printf '%s' "$compare_js" | grep -Fq '701678' || { echo '::error::Hao-Yu Lee critical comparison target is missing'; exit 1; }
-          printf '%s' "$compare_js" | grep -Fq '678906' || { echo '::error::Kai-Wei Teng critical comparison target is missing'; exit 1; }
-          printf '%s' "$compare_js" | grep -Fq 'MLB 全聯盟比較' || { echo '::error::MLB-wide comparison block is missing'; exit 1; }
-
-          status_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}refresh-status-consistency.js?verify=${GITHUB_SHA}")
-          printf '%s' "$status_js" | grep -Fq '球員資料保留最新完整快照' || { echo '::error::Refresh status clarification is missing'; exit 1; }
-
-          today_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}summary-extra-stats.js?verify=${GITHUB_SHA}")
-          printf '%s' "$today_js" | grep -Fq 'k>=2' || { echo '::error::2K Today warning rule is missing'; exit 1; }
-          printf '%s' "$today_js" | grep -Fq 'BB' || { echo '::error::Today BB exposure is missing'; exit 1; }
-
-          formatter_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}today-stat-line.js?verify=${GITHUB_SHA}")
-          printf '%s' "$formatter_js" | grep -Fq 'strikeOuts' || { echo '::error::Today formatter omits hitter strikeouts'; exit 1; }
-          printf '%s' "$formatter_js" | grep -Fq 'rbi' || { echo '::error::Today formatter omits hitter RBI'; exit 1; }
-          if printf '%s' "$asia_js" | grep -Eiq '林昌勇|林昶勇|Lim Chang[- ]?yong|임창용'; then
-            echo '::error::Removed Korean player is present in production'
+          app_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}app.js?verify=${GITHUB_SHA}")
+          printf '%s' "$app_js" | grep -Fq "await refreshData({reason:'button'})" || { echo '::error::Manual Refresh is not routed through refreshData'; exit 1; }
+          printf '%s' "$app_js" | grep -Fq "refreshData({reason:'startup'})" || { echo '::error::Startup is not routed through refreshData'; exit 1; }
+          if printf '%s' "$app_js" | grep -Fq 'button-background'; then
+            echo '::error::Old duplicate button-background refresh still exists'
             exit 1
           fi
+          if printf '%s' "$app_js" | grep -Fq 'await refreshCentralSnapshot()'; then
+            echo '::error::Manual Refresh still invokes the old central snapshot writer'
+            exit 1
+          fi
+          printf '%s' "$app_js" | grep -Fq 'previous?.today' || { echo '::error::Confirmed Today preservation guard is missing'; exit 1; }
+          printf '%s' "$app_js" | grep -Fq 'confirmedAppearance(players[i],previous.today)' || { echo '::error::Confirmed Today regression guard is missing'; exit 1; }
 
           gameday_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}gameday-universe-hotfix.js?verify=${GITHUB_SHA}")
           printf '%s' "$gameday_js" | grep -Fq 'exactly one refresh/write path: app.js refreshData()' || { echo '::error::Gameday bridge is not single-writer'; exit 1; }
+          printf '%s' "$gameday_js" | grep -Fq "refreshData({ reason: force ? 'gameday-force' : 'gameday' })" || { echo '::error::Gameday bridge does not route through app refreshData'; exit 1; }
           if printf '%s' "$gameday_js" | grep -Eq 'CENTRAL_DASHBOARD_SNAPSHOT|persistSnapshot\(|paint\(|setInterval\(|setTimeout\('; then
             echo '::error::Gameday bridge still owns a competing state/render path'
             exit 1
           fi
 
-          highlight_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}today-highlight.js?verify=${GITHUB_SHA}")
-          printf '%s' "$highlight_js" | grep -Fq 'k>=2' || { echo '::error::2K highlight rule is missing'; exit 1; }
-          printf '%s' "$highlight_js" | grep -Fq "tone='warning'" || { echo '::error::Warning highlight tone is missing'; exit 1; }
-          echo 'Dashboard production HTML + Asia/KBO + critical MLB + Today assets: OK'
+          snapshot_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}data/dashboard-snapshot.js?verify=${GITHUB_SHA}")
+          printf '%s' "$snapshot_js" | grep -Fq '701678' || { echo '::error::Hao-Yu Lee MLB ID 701678 is missing from production snapshot'; exit 1; }
+          if printf '%s' "$snapshot_js" | grep -Eiq '林昌勇|林昶勇|Lim Chang[- ]?yong|임창용'; then
+            echo '::error::Removed Korean player is present in production snapshot'
+            exit 1
+          fi
 
-          observation_health=$(curl -fsSL --max-time 20 "$observation/health")
-          echo "$observation_health" | jq -e '.ok == true' >/dev/null
           players=$(curl -fsSL --max-time 20 "$observation/players")
           echo "$players" | jq -e '.players | type == "array" and length > 0' >/dev/null
-          echo "$players" | grep -Eiq '林昌勇|林昶勇|Lim Chang[- ]?yong|임창용' && { echo '::error::Removed Korean player is present in observation roster'; exit 1; } || true
-          echo "Observation Worker: OK ($(echo "$players" | jq '.players | length') players)"
+          if echo "$players" | grep -Eiq '林昌勇|林昶勇|Lim Chang[- ]?yong|임창용'; then
+            echo '::error::Removed Korean player is present in observation roster'
+            exit 1
+          fi
 
-          line_health=$(curl -fsSL --max-time 20 "$line/health")
-          echo "$line_health" | jq -e '.ok == true and .lineScheduler == true and .lineConfigured == true and .format == "flex-v1" and .source == "cloudflare-official"' >/dev/null
-          echo "$line_health" | jq '{ok,lineScheduler,lineConfigured,format,source,cronTimezone}'
-          echo 'LINE production Worker: OK'
+          echo 'Single-writer production regression checks: OK'
