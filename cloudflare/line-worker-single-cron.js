@@ -1,4 +1,5 @@
 import handler from './line-flex-worker.js';
+import { syncRosterLevels } from './roster-level-monitor.js';
 
 // Cloudflare is the only production LINE scheduler. The imported Flex worker
 // resolves each current team's official sportId before querying MiLB schedules.
@@ -177,6 +178,8 @@ export default {
       console.log(`[line] ignoring unexpected Taiwan hour ${hour}`);
       return;
     }
+    const roster = await syncRosterLevels(env, scheduledAt);
+    console.log(`[roster] checked=${roster.checked} changed=${roster.changed} ${JSON.stringify(roster.changes)}`);
     await forceCurrentStateReport(env, hour);
     return handler.scheduled({ ...controller, cron: syntheticCron }, env, ctx);
   },
