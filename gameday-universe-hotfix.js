@@ -8,14 +8,14 @@
   let running = false;
   let queuedForce = false;
   let timer = null;
+  let firstModelPaintSeen = false;
 
   function trackedPairs() {
-    if (typeof players !== 'undefined' && typeof lastResults !== 'undefined' && Array.isArray(players) && Array.isArray(lastResults) && players.length && lastResults.length) {
-      return players.map((player, index) => ({ player, result: lastResults[index] })).filter(({ result }) => result);
-    }
-    const snapshot = window.CENTRAL_DASHBOARD_SNAPSHOT;
-    if (!snapshot?.players || !snapshot?.results) return [];
-    return snapshot.players.map((player, index) => ({ player, result: snapshot.results[index] })).filter(({ result }) => result);
+    // Single authority: Gameday is allowed to update only the active app model.
+    // Never mutate CENTRAL_DASHBOARD_SNAPSHOT as a second hidden state tree.
+    if (typeof players === 'undefined' || typeof lastResults === 'undefined') return [];
+    if (!Array.isArray(players) || !Array.isArray(lastResults) || !players.length || !lastResults.length) return [];
+    return players.map((player, index) => ({ player, result: lastResults[index] })).filter(({ result }) => result);
   }
 
   async function fetchJson(url, timeout = 8000) {
@@ -88,12 +88,7 @@
     return player.group === 'pitching' ? (entry.stats?.pitching || {}) : (entry.stats?.batting || entry.stats?.hitting || {});
   }
 
-  const num = value => Number(value || 0);
-  function statLine(player, stat) {
-    return window.TaiwanTodayStatLine(player, stat);
-  }
-
-  function markLive(player, result, feed, presence) {
+  function markLive(player, result, feed) {
     const stat = liveStat(feed, player);
     const gamePk = Number(feed?.gamePk || feed?.gameData?.game?.pk);
     result.today = {
@@ -102,20 +97,9 @@
       stat: { ...stat },
       game: { gamePk },
       live: true,
-      onGame: true
+      onGame: true,
+      scheduled: false
     };
-
-    const label = presence.current ? 'LIVE · 現在場上' : 'LIVE · 已上場';
-    const line = statLine(player, stat);
-    const summary = document.querySelector(`a[href="#player-${player.id}"] .summary-today`);
-    if (summary) summary.textContent = `${line} · LIVE`;
-    const detail = document.querySelector(`#player-${player.id} .today-detail`);
-    if (detail) {
-      const strong = detail.querySelector('strong');
-      const text = detail.querySelector('p');
-      if (strong) strong.textContent = label;
-      if (text) text.textContent = line;
-    }
   }
 
   function markScheduled(player, result, feed, lineup) {
@@ -131,19 +115,14 @@
       battingOrder: lineup.battingOrder,
       position: lineup.position
     };
-    const spot = lineup.battingOrder ? Math.ceil(lineup.battingOrder / 100) : 0;
-    const label = player.group === 'pitching'
-      ? '預定先發投手'
-      : `先發已確認${spot ? ` · 第 ${spot} 棒` : ''}${lineup.position ? ` · ${lineup.position}` : ''}`;
-    const summary = document.querySelector(`a[href="#player-${player.id}"] .summary-today`);
-    if (summary) summary.textContent = label;
-    const detail = document.querySelector(`#player-${player.id} .today-detail`);
-    if (detail) {
-      const strong = detail.querySelector('strong');
-      const text = detail.querySelector('p');
-      if (strong) strong.textContent = '先發已確認';
-      if (text) text.textContent = label;
-    }
+  }
+
+  function renderCanonicalState(now, matched) {
+    if (!matched) return;
+    if (typeof persistSnapshot !== 'function' || typeof paint !== 'function' || typeof lastResults === 'undefined') return;
+    // Persist the model first, then repaint once through app.js. No direct DOM patching.
+    persistSnapshot(lastResults, lastSuccessAt || Date.now());
+    paint(lastResults, `Gameday LIVE 已確認 · ${new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(now)}`);
   }
 
   function shouldScanGame(game, now, force = false, sportId = 0) {
@@ -172,7 +151,7 @@
       const now = new Date();
       const currentPairs = trackedPairs();
       const trackedIds = idSet(currentPairs);
-      if (!trackedIds.size) return;
+      if (!trackedIds.size) return { games: 0, matched: 0, waitingForModel: true };
       const { start, end } = scheduleQueryWindow(now);
       const mlbTeamIds = currentMlbTeamIds(currentPairs);
 
@@ -209,21 +188,15 @@
           matched += 1;
         }
         const seen = playersSeenInFeed(item.value.feed, trackedIds);
-        for (const [playerId, presence] of seen) {
+        for (const [playerId] of seen) {
           const pair = pairById.get(playerId);
           if (!pair) continue;
-          markLive(pair.player, pair.result, item.value.feed, presence);
+          markLive(pair.player, pair.result, item.value.feed);
           matched += 1;
         }
       }
 
-      const count = currentPairs.filter(({ result }) => result.today?.scheduled || result.today?.onGame || result.today?.stat).length;
-      const countNode = document.querySelector('#today-count');
-      if (countNode) countNode.textContent = String(count);
-      if (matched > 0) {
-        const lastUpdate = document.querySelector('#last-update');
-        if (lastUpdate) lastUpdate.textContent = `Gameday 全層級 LIVE 已確認 · ${new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(now)}`;
-      }
+      renderCanonicalState(now, matched);
       window.dispatchEvent(new CustomEvent('tracker:gameday-universe', { detail: { games: games.size, matched, scheduleSuccesses } }));
       return { games: games.size, matched, scheduleSuccesses };
     } catch (error) {
@@ -241,5 +214,10 @@
 
   window.TaiwanMlbUniverseScan = scan;
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scan(); });
+  document.addEventListener('tracker:players-loaded', () => {
+    if (firstModelPaintSeen) return;
+    firstModelPaintSeen = true;
+    scan({ force: true });
+  }, { once: true });
   scan();
 })();
