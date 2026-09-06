@@ -1,0 +1,103 @@
+name: Apply Today root fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-today-root-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move monotonic Today authority into app model
+        shell: python
+        run: |
+          from pathlib import Path
+
+          app = Path('app.js')
+          text = app.read_text()
+          anchor = "function confirmedAppearance(p,today){return Boolean(today?.scheduled||today?.onGame||liveAppearance(p,today?.stat||{}));}\n"
+          helper = anchor + """function todayPhase(p,today){\n  if(!today||day(today.date)!==twToday())return 0;\n  if(liveAppearance(p,today.stat||{})||today.onGame)return 4;\n  if(today.live)return 3;\n  if(today.scheduled)return 2;\n  return 1;\n}\nfunction inningsOuts(value){const parts=String(value??'0').split('.'),whole=Number(parts[0]||0),rem=Number(parts[1]||0);return whole*3+(rem===1||rem===2?rem:0);}\nfunction todayProgress(p,today){\n  const s=today?.stat||{};\n  if(p.group==='pitching'){\n    const bf=num(s.battersFaced),pitches=num(s.pitchesThrown||s.numberOfPitches),outs=inningsOuts(s.inningsPitched);\n    return Math.max(bf,outs)*1000+pitches;\n  }\n  const pa=num(s.plateAppearances),derived=num(s.atBats)+num(s.baseOnBalls)+num(s.hitByPitch)+num(s.sacFlies)+num(s.sacBunts);\n  return Math.max(pa,derived)*1000+num(s.hits)+num(s.runs)+num(s.rbi);\n}\nfunction preferToday(p,incoming,previous){\n  const incomingPhase=todayPhase(p,incoming),previousPhase=todayPhase(p,previous);\n  if(previousPhase<2)return incoming;\n  if(incomingPhase<previousPhase)return previous;\n  if(incomingPhase>previousPhase)return incoming;\n  if(incomingPhase>=4&&todayProgress(p,incoming)<todayProgress(p,previous))return previous;\n  return incoming;\n}\n"""
+          if 'function preferToday(' not in text:
+              if anchor not in text:
+                  raise SystemExit('confirmedAppearance anchor not found')
+              text = text.replace(anchor, helper, 1)
+
+          old = """      if(!entry.result.today&&previous?.today&&twToday(new Date(lastSuccessAt||Date.now()))===twToday()&&confirmedAppearance(players[i],previous.today))return {...entry.result,today:previous.today};\n      return entry.result;"""
+          new = """      const preferredToday=preferToday(players[i],entry.result.today,previous?.today);\n      return preferredToday===entry.result.today?entry.result:{...entry.result,today:preferredToday};"""
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('collectResults merge anchor not found')
+          app.write_text(text)
+
+          Path('gameday-universe-hotfix.js').write_text("""(() => {\n  // Compatibility bridge only. There is exactly one refresh/write path: app.js refreshData().\n  // This file must not fetch MLB independently, mutate Today state, paint the DOM,\n  // persist snapshots, start timers, or run an automatic startup scan.\n  async function scan({ force = false } = {}) {\n    if (typeof refreshData !== 'function') {\n      return { skipped: true, reason: 'app-model-not-ready' };\n    }\n    const results = await refreshData({ reason: force ? 'gameday-force' : 'gameday' });\n    window.dispatchEvent(new CustomEvent('tracker:gameday-universe', {\n      detail: { singleWriter: true, refreshed: true }\n    }));\n    return { singleWriter: true, refreshed: true, results };\n  }\n\n  window.TaiwanMlbUniverseScan = scan;\n})();\n""")
+
+          index = Path('index.html')
+          html = index.read_text().replace('app.js?v=20260903-single-authority-v2','app.js?v=20260907-today-monotonic-v1')
+          index.write_text(html)
+
+          smoke = Path('.github/workflows/production-smoke.yml')
+          s = smoke.read_text()
+          s = s.replace("expected_app='app.js?v=20260903-single-authority-v2'", "expected_app='app.js?v=20260907-today-monotonic-v1'")
+          old_assert = "          printf '%s' \"$app_js\" | grep -Fq 'previous?.today' || { echo '::error::Confirmed Today preservation guard is missing'; exit 1; }\n          printf '%s' \"$app_js\" | grep -Fq 'confirmedAppearance(players[i],previous.today)' || { echo '::error::Confirmed Today regression guard is missing'; exit 1; }"
+          new_assert = "          printf '%s' \"$app_js\" | grep -Fq 'function preferToday(' || { echo '::error::Monotonic Today state authority is missing from app model'; exit 1; }\n          printf '%s' \"$app_js\" | grep -Fq 'todayProgress(p,incoming)<todayProgress(p,previous)' || { echo '::error::Today progress regression guard is missing'; exit 1; }\n          printf '%s' \"$app_js\" | grep -Fq 'preferredToday=preferToday(players[i],entry.result.today,previous?.today)' || { echo '::error::collectResults does not use monotonic Today authority'; exit 1; }"
+          if old_assert in s:
+              s = s.replace(old_assert, new_assert)
+          smoke.write_text(s)
+
+      - name: Test Today merge semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app.js
+          node --check gameday-universe-hotfix.js
+          node <<'NODE'
+          const fs=require('fs'),vm=require('vm');
+          const src=fs.readFileSync('app.js','utf8').split('function updateMetrics')[0];
+          const context={console,structuredClone,Date,Intl,Number,String,Boolean,Math,Set,Map,Promise,
+            fetch:async()=>{throw new Error('fetch disabled in merge unit test')},
+            window:{TaiwanGameTime:{taiwanDate:()=> '2026-09-07',scheduleQueryWindow:()=>({start:'2026-09-06',end:'2026-09-07'}),gameTaiwanDate:()=> '2026-09-07',isTaiwanTodayGame:()=>true},TaiwanTodayStatLine:()=>''},
+            document:{querySelectorAll:()=>[]}};
+          vm.createContext(context); vm.runInContext(src,context);
+          const hit={group:'hitting'},pitch={group:'pitching'};
+          const scheduled={date:'2026-09-07',scheduled:true,stat:{}};
+          const hitLive={date:'2026-09-07',live:true,stat:{plateAppearances:1,baseOnBalls:1,runs:1}};
+          const hitFinal={date:'2026-09-07',live:false,stat:{plateAppearances:1,baseOnBalls:1,runs:1}};
+          const pitchStrong={date:'2026-09-07',live:true,stat:{inningsPitched:'2.2',battersFaced:10,numberOfPitches:43,strikeOuts:5}};
+          const pitchWeak={date:'2026-09-07',live:true,stat:{inningsPitched:'1.0',battersFaced:4,numberOfPitches:20,strikeOuts:2}};
+          if(context.preferToday(hit,scheduled,hitLive)!==hitLive) throw new Error('appeared hitter regressed to scheduled');
+          if(context.preferToday(hit,hitFinal,hitLive)!==hitFinal) throw new Error('final state did not supersede equal-progress live state');
+          if(context.preferToday(pitch,pitchWeak,pitchStrong)!==pitchStrong) throw new Error('pitching progress regressed');
+          if(context.preferToday(hit,hitLive,scheduled)!==hitLive) throw new Error('scheduled did not advance to appearance');
+          console.log('Today merge semantics: OK');
+          NODE
+
+      - name: Record root cause in project state
+        shell: python
+        run: |
+          from pathlib import Path
+          note = """\n## 2026-09-07 Today monotonic state root-cause fix\n- Root cause: `app.js collectResults()` protected a prior confirmed Today state only when the fresh API result had `today == null`. A later non-null but weaker state (for example scheduled/partial) could therefore overwrite an already confirmed appearance.\n- Fix: Today precedence now lives inside the single authoritative `app.js` model. Same-Taiwan-day state cannot regress from an appearance to scheduled/partial data, and within an appearance lower-progress stats cannot replace higher-progress stats. Equal-progress fresh data is allowed so LIVE can correctly become final.\n- No player-name or player-ID exceptions are used. `gameday-universe-hotfix.js` is restored to a compatibility bridge and does not write/paint/persist Today state.\n- Regression unit cases cover hitter scheduled→appearance, live→final, and pitcher progress regression. Production smoke is updated to require the model-level authority.\n- Release remains NOT READY until the production deployment and live snapshot checks pass.\n"""
+          for name in ('README.md','PROJECT_STATE.md','AGENTS.md'):
+              p=Path(name); text=p.read_text()
+              if '## 2026-09-07 Today monotonic state root-cause fix' not in text:
+                  p.write_text(text.rstrip()+"\n"+note)
+
+      - name: Commit root fix and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/apply-today-root-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix Today state regression in authoritative app model'
+          git push origin HEAD:main
