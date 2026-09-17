@@ -85,3 +85,14 @@ CHECK BASELINE → CHECK PRODUCTION VERSION → APPLY MINIMAL DELTA → REGRESSI
 - Root cause: `app.js collectResults()` only protected a confirmed Today state when the fresh result had `today == null`; a later non-null but weaker scheduled/partial state could overwrite a confirmed appearance.
 - Fix: Today precedence now lives in the single authoritative `app.js` model. Same-day state cannot regress from appearance to scheduled/partial, and lower-progress appearance data cannot replace higher-progress data. Equal-progress fresh data may advance LIVE to final.
 - No player-name or player-ID exceptions are used. `gameday-universe-hotfix.js` is compatibility-only.
+
+
+## 2026-09-18 Asia refresh repair
+- Root cause: Asia/NPB data was hard-coded in `npb-update.js` with a 2026-09-06 snapshot; the visible global refresh action did not refresh the Asia module.
+- Minimal isolated fix only; protected MLB stable core was not changed.
+- Japan snapshot refreshed against NPB official data dated 2026-09-16/17.
+- Added visible `↻ 更新 Asia` control inside the Asia page.
+- When Asia is active, the header refresh control now performs a cache-busting reload and returns directly to Asia.
+- Browser cache key updated to `npb-update.js?v=20260918-asia-refresh-v1`.
+- Source commits: `f6566cb894a650b290ba42c5fc44f0c553f246ef` and `71812a1578463565097b1426156f56b91d195f1b`.
+- Production verification still required before declaring READY TO TEST.
