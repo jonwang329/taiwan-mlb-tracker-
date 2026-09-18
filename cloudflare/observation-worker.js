@@ -156,7 +156,7 @@ async function playerTodaySnapshot(player,person,now){
       if(!hasAppearance(player.group,stat,boxPlayer))continue;
       const sportId=await teamSportId(teamId).catch(()=>null);
       const season=await seasonStat(player,sportId,Number(taiwanDate(now).slice(0,4))).catch(()=>null);
-      return {id:player.id,name:player.name,group:player.group,team,status,played:true,gameDate:gameTaiwanDate(game),level:'MiLB / MLB',gameStatus:statusLabel(game.status),performance:performance(player.group,stat),season:seasonLine(player.group,season||{}),liveSource:game.status?.abstractGameState==='Live'};
+      return {id:player.id,name:player.name,group:player.group,team,status,played:true,gameDate:gameTaiwanDate(game),level:'MiLB / MLB',gameStatus:statusLabel(game.status),performance:performance(player.group,stat),season:seasonLine(player.group,season||{}),liveSource:game.status?.abstractGameState==='Live',gamePk:game.gamePk,stat};
     }catch(error){console.log(`[line] boxscore failed for ${player.id}: ${error.message}`);}
   }
   const game=ordered[0]||null;
@@ -226,6 +226,9 @@ export default {
     if(request.method==='POST'&&url.pathname==='/internal/line-test'){
       if(!deployTestAuthorized(request,env))return jsonResponse(request,{error:'unauthorized'},401);
       try{return jsonResponse(request,await runScheduledLine(env,'manual',new Date(),true));}catch(error){return jsonResponse(request,{ok:false,error:error.message},500);}
+    }
+    if(request.method==='GET'&&url.pathname==='/today'){
+      try{return jsonResponse(request,await collectSnapshot(env,new Date()));}catch(error){return jsonResponse(request,{ok:false,error:error.message},500);}
     }
     if(request.method==='GET'&&(url.pathname==='/'||url.pathname==='/players')){
       const players=await readPlayers(env);
