@@ -23,7 +23,7 @@ jobs:
           set -euo pipefail
           dashboard='https://jonwang329.github.io/taiwan-mlb-tracker-/'
           observation='https://taiwan-mlb-observation-list.jonwang329.workers.dev'
-          expected_app='app.js?v=20260907-today-monotonic-v1'
+          expected_app='app.js?v=20260918-cloudflare-today-authority-v1'
           expected_gameday='gameday-universe-hotfix.js?v=20260906-single-writer-v1'
 
           html=''
@@ -56,6 +56,8 @@ jobs:
           printf '%s' "$app_js" | grep -Fq 'function preferToday(' || { echo '::error::Monotonic Today authority is missing from app model'; exit 1; }
           printf '%s' "$app_js" | grep -Fq 'todayProgress(p,incoming)<todayProgress(p,previous)' || { echo '::error::Today progress regression guard is missing'; exit 1; }
           printf '%s' "$app_js" | grep -Fq 'preferredToday=preferToday(players[i],entry.result.today,previous?.today)' || { echo '::error::collectResults does not use monotonic Today authority'; exit 1; }
+          printf '%s' "$app_js" | grep -Fq 'async function reconcileCanonicalToday(results)' || { echo '::error::Canonical Cloudflare Today reconciliation is missing'; exit 1; }
+          printf '%s' "$app_js" | grep -Fq '/today?_' || { echo '::error::Website does not read canonical /today feed'; exit 1; }
 
           gameday_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}gameday-universe-hotfix.js?verify=${GITHUB_SHA}")
           printf '%s' "$gameday_js" | grep -Fq 'exactly one refresh/write path: app.js refreshData()' || { echo '::error::Gameday bridge is not single-writer'; exit 1; }
@@ -85,25 +87,18 @@ jobs:
           vm.runInContext(fs.readFileSync('/tmp/dashboard-snapshot.js', 'utf8'), sandbox);
           const snap = sandbox.window.CENTRAL_DASHBOARD_SNAPSHOT;
           if (!snap || !Array.isArray(snap.players) || !Array.isArray(snap.results)) throw new Error('Production central snapshot is invalid');
-          const byId = new Map(snap.players.map((p, i) => [Number(p.id), { player: p, result: snap.results[i] }]));
-          const expectedDate = '2026-09-07';
-          function assertToday(id, group, label) {
-            const row = byId.get(id);
-            if (!row) throw new Error(`${label} (${id}) missing from production snapshot`);
-            const today = row.result?.today;
-            if (!today || String(today.date || '').slice(0, 10) !== expectedDate) throw new Error(`${label} has no confirmed ${expectedDate} Today state`);
-            if (!today.game?.gamePk) throw new Error(`${label} Today state has no gamePk`);
-            const s = today.stat || {};
-            const n = v => Number(v || 0);
-            const appeared = group === 'pitching'
-              ? n(s.battersFaced) > 0 || n(s.pitchesThrown || s.numberOfPitches) > 0 || n(s.inningsPitched) > 0
-              : n(s.plateAppearances) > 0 || n(s.atBats) > 0 || n(s.runs) > 0 || n(s.baseOnBalls) > 0 || n(s.hitByPitch) > 0 || n(s.sacFlies) > 0 || n(s.sacBunts) > 0;
-            if (!appeared) throw new Error(`${label} Today state does not prove an appearance`);
-            console.log(`${label}: ${today.live ? 'LIVE' : 'CONFIRMED/FINAL'} gamePk=${today.game.gamePk}`);
-          }
-          assertToday(800213, 'pitching', '張弘霖');
-          assertToday(828667, 'hitting', '柯敬賢');
+          if (snap.players.length !== snap.results.length) throw new Error('Production central snapshot player/result length mismatch');
           NODE
+
+          today=$(curl -fsSL --max-time 30 -H 'Cache-Control: no-cache' "$observation/today?smoke=${GITHUB_SHA}")
+          echo "$today" | jq -e '.date | type == "string" and length == 10' >/dev/null
+          echo "$today" | jq -e '.players | type == "array" and length > 0' >/dev/null
+          echo "$today" | jq -e '[.players[] | select(.played == true) | (.gameDate == $.date)] | all' >/dev/null
+          canonical_date=$(echo "$today" | jq -r '.date')
+          if [ "$canonical_date" = "2026-09-18" ]; then
+            echo "$today" | jq -e '.players[] | select((.id|tonumber) == 678906) | .played == true and .gameDate == "2026-09-18" and ((.stat.inningsPitched // 0 | tonumber) > 0 or (.stat.battersFaced // 0 | tonumber) > 0 or (.stat.pitchesThrown // .stat.numberOfPitches // 0 | tonumber) > 0)' >/dev/null \
+              || { echo '::error::Kai-Wei Teng is not confirmed as played in canonical 2026-09-18 Today feed'; exit 1; }
+          fi
 
           players=$(curl -fsSL --max-time 20 "$observation/players")
           echo "$players" | jq -e '.players | type == "array" and length > 0' >/dev/null
