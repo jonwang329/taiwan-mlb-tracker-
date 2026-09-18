@@ -1,0 +1,43 @@
+name: Today canonical smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  today-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify production canonical Today sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          dashboard='https://jonwang329.github.io/taiwan-mlb-tracker-/'
+          observation='https://taiwan-mlb-observation-list.jonwang329.workers.dev'
+          expected_app='app.js?v=20260918-cloudflare-today-authority-v1'
+
+          html=''
+          for attempt in $(seq 1 24); do
+            html=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}?today-smoke=${GITHUB_SHA}-${attempt}" || true)
+            if printf '%s' "$html" | grep -Fq "$expected_app"; then break; fi
+            sleep 5
+          done
+          test -n "$html" || { echo '::error::Production dashboard returned no HTML'; exit 1; }
+          printf '%s' "$html" | grep -Fq "$expected_app" || { echo '::error::Canonical Today app version is not deployed'; exit 1; }
+
+          app_js=$(curl -fsSL --max-time 20 -H 'Cache-Control: no-cache' "${dashboard}app.js?verify=${GITHUB_SHA}")
+          printf '%s' "$app_js" | grep -Fq 'async function reconcileCanonicalToday(results)' || { echo '::error::Canonical Today reconciliation missing from production app.js'; exit 1; }
+          printf '%s' "$app_js" | grep -Fq '/today?_' || { echo '::error::Production app.js does not call canonical /today'; exit 1; }
+
+          today=$(curl -fsSL --max-time 30 -H 'Cache-Control: no-cache' "${observation}/today?verify=${GITHUB_SHA}")
+          echo "$today" | jq -e '.date == "2026-09-18"' >/dev/null || { echo '::error::Canonical Today feed is not Taiwan date 2026-09-18'; exit 1; }
+          echo "$today" | jq -e '.players | type == "array" and length > 0' >/dev/null
+          echo "$today" | jq -e '.players[] | select((.id|tonumber) == 678906) | .played == true and .gameDate == "2026-09-18" and ((.stat.inningsPitched // 0 | tonumber) > 0 or (.stat.battersFaced // 0 | tonumber) > 0 or (.stat.pitchesThrown // .stat.numberOfPitches // 0 | tonumber) > 0)' >/dev/null \
+            || { echo '::error::Kai-Wei Teng is not confirmed as played in canonical Today feed'; exit 1; }
+
+          echo 'Canonical Today production smoke: OK'
