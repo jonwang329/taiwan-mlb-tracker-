@@ -185,7 +185,7 @@ async function collectSnapshot(env, now = new Date()) {
         ...player, team: teamName, played: true, scheduled: false,
         gameDate: gameTaiwanDate(game), gameTime: gameTaiwanTime(game), gameStatus: statusLabel(game.status),
         performance: performance(player.group, stat), season: seasonLine(player.group, season || {}),
-        level, liveSource: statusKind(game.status) === 'live'
+        level, liveSource: statusKind(game.status) === 'live', gamePk: game.gamePk, stat
       };
     }
 
@@ -397,3 +397,5 @@ export default {
     ctx.waitUntil(runLine(env, controller.cron, new Date(controller.scheduledTime)).then(result => console.log(JSON.stringify(result))));
   }
 };
+
+export { collectSnapshot };
