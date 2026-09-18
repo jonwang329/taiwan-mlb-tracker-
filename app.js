@@ -137,13 +137,40 @@ async function collectResults(){
   if(!freshCount&&lastResults.length)throw new Error('MLB / MiLB API 暫時無法更新');
   return {results:merged,failedCount};
 }
+async function reconcileCanonicalToday(results){
+  const apiUrl=String(window.OBSERVATION_API_URL||'').replace(/\/$/,'');
+  if(!apiUrl)return results;
+  try{
+    const r=await fetch(`${apiUrl}/today?_=${Date.now()}`,{cache:'no-store',headers:{Accept:'application/json','Cache-Control':'no-cache'}});
+    if(!r.ok)throw new Error(`Cloudflare today ${r.status}`);
+    const snapshot=await r.json();
+    if(!Array.isArray(snapshot?.players))throw new Error('Cloudflare today payload invalid');
+    const byId=new Map(snapshot.players.map(item=>[Number(item.id),item]));
+    return results.map((result,i)=>{
+      const p=players[i],canonical=byId.get(Number(p.id));
+      if(!canonical?.played||String(canonical.gameDate||'')!==twToday())return result;
+      const canonicalToday={
+        date:canonical.gameDate,
+        level:canonical.level||currentLevel(result),
+        stat:canonical.stat||{},
+        game:canonical.gamePk?{gamePk:canonical.gamePk}:undefined,
+        live:Boolean(canonical.liveSource),
+        onGame:true
+      };
+      return {...result,today:preferToday(p,canonicalToday,result?.today)};
+    });
+  }catch(error){
+    console.warn('Canonical Cloudflare Today unavailable; keeping browser MLB result',error);
+    return results;
+  }
+}
 async function refreshData({list=null,reason='manual'}={}){
   const summary=document.querySelector('#player-summary'),lastUpdate=document.querySelector('#last-update');
   lastCheckAt=Date.now();
   if(lastResults.length)lastUpdate.textContent='正在向 MLB / MiLB 官方資料更新…';else if(!summary.children.length)summary.innerHTML='<div class="loading">正在讀取 MLB / MiLB 官方資料…</div>';
   try{
     if(list)setTrackedPlayers(list);else await loadTrackedPlayers();
-    const {results,failedCount}=await collectResults(),sig=snapshotSignature(results),now=Date.now();
+    const collected=await collectResults(),results=await reconcileCanonicalToday(collected.results),failedCount=collected.failedCount,sig=snapshotSignature(results),now=Date.now();
     const changed=sig!==lastSignature||players.length!==lastPlayers.length;
     persistSnapshot(results,failedCount?lastSuccessAt||now:now);
     if(changed)paint(results,failedCount?`部分球員 API 暫時無法更新 · 已保留舊資料 · 檢查 ${formatTime(now)}`:`MLB API 已更新 · ${formatTime(now)}`);
