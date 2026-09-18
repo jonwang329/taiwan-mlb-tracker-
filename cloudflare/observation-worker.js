@@ -1,3 +1,4 @@
+import { collectSnapshot as collectCanonicalTodaySnapshot } from './line-flex-worker.js';
 const KEY = 'players';
 const LINE_STATE_KEY = 'line-state:v1';
 const OWNER_KEY_SHA256 = '3d917f84bd31e2c18597e0858262ba35af11a9fd12f050df4e514984f5a49941';
@@ -228,7 +229,7 @@ export default {
       try{return jsonResponse(request,await runScheduledLine(env,'manual',new Date(),true));}catch(error){return jsonResponse(request,{ok:false,error:error.message},500);}
     }
     if(request.method==='GET'&&url.pathname==='/today'){
-      try{return jsonResponse(request,await collectSnapshot(env,new Date()));}catch(error){return jsonResponse(request,{ok:false,error:error.message},500);}
+      try{return jsonResponse(request,await collectCanonicalTodaySnapshot(env,new Date()));}catch(error){return jsonResponse(request,{ok:false,error:error.message},500);}
     }
     if(request.method==='GET'&&(url.pathname==='/'||url.pathname==='/players')){
       const players=await readPlayers(env);
